@@ -5,6 +5,7 @@ options:
   deploymentTarget:
     iOS: "18.0"
   createIntermediateGroups: true
+  developmentLanguage: es
 
 settings:
   base:

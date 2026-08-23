@@ -65,7 +65,6 @@ private struct WelcomeStep: View {
                     .padding(.horizontal, 40)
             }
             Spacer()
-            Spacer()
         }
     }
 }
