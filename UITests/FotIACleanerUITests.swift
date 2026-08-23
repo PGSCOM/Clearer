@@ -1,12 +1,14 @@
 import XCTest
 
-/// Smoke test: the app launches and renders its placeholder title. This is
-/// also what CI uses to prove a booted simulator can run the app end to end
-/// before it takes the screenshot artifact.
+/// Smoke test: on a fresh install (photo access not yet determined — the
+/// state every CI simulator starts in) the app shows the permission gate,
+/// not a crash and not a blank screen. Deliberately doesn't tap "Dar
+/// acceso" — that would trigger the real system permission alert, which
+/// isn't worth wrangling in CI for a Fase 1 smoke test.
 final class FotIACleanerUITests: XCTestCase {
-    func testAppLaunches() throws {
+    func testShowsPhotoAccessGateOnFirstLaunch() throws {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertTrue(app.staticTexts["FotIA Cleaner"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Dar acceso"].waitForExistence(timeout: 5))
     }
 }

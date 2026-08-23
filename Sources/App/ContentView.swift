@@ -1,20 +1,31 @@
 import SwiftUI
 
-/// Placeholder screen for Fase 0. The real onboarding/UI arrives in later
-/// fases — this just proves the app target builds, launches, and renders.
+/// Routes between the permission gate and the photo grid, and re-checks
+/// authorization whenever the app comes back to the foreground (in case the
+/// user granted access from Settings while we were backgrounded).
 struct ContentView: View {
+    @State private var model = PhotoGridModel()
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
-        VStack(spacing: 12) {
-            Text(AppInfo.name)
-                .font(.largeTitle.weight(.semibold))
-            Text("Scaffolding en pie. La app de verdad empieza en la Fase 1.")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+        Group {
+            switch model.authorizationStatus {
+            case .authorized, .limited:
+                PhotoGridView(model: model)
+            default:
+                PhotoAccessGateView(status: model.authorizationStatus) {
+                    Task { await model.requestAccess() }
+                }
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
+        .task {
+            model.refreshAuthorizationStatus()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                model.refreshAuthorizationStatus()
+            }
+        }
     }
 }
 

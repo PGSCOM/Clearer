@@ -13,7 +13,12 @@ romperlo la invalida entera. Se garantiza así:
 
 - **`Sources/Photos/PhotoLibrary.swift` es el ÚNICO fichero que toca `PHImageManager`.**
   `isNetworkAccessAllowed = false` se fija ahí y en ningún otro sitio. Todo lo demás pide
-  miniaturas a este actor, nunca a PhotoKit directamente.
+  miniaturas a este actor, nunca a PhotoKit directamente. Las miniaturas piden
+  `deliveryMode = .fastFormat` a propósito, no solo por velocidad: es el único modo con el que
+  PhotoKit garantiza una única llamada al completion handler — con `.opportunistic` la segunda
+  pasada "mejor calidad" podría necesitar red (que tenemos desactivada) y no hay garantía
+  documentada de que llegue una llamada final en ese caso, así que se arriesgaría a colgar la
+  `continuation` para siempre.
 - Si PhotoKit marca un asset como solo-en-iCloud, se salta y se cuenta — no se descarga.
 - CI (`.github/workflows/ci.yml`) tiene un `grep` que **falla el build** si aparece
   `PHImageManager`/`requestImage` fuera de ese fichero. Si tocas algo de Photos y el guard salta,
