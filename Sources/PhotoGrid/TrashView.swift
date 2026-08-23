@@ -54,7 +54,7 @@ struct TrashView: View {
             if let lastResult {
                 Section {
                     Text(lastResult.summary)
-                        .foregroundStyle(lastResult.isSuccess ? .primary : .red)
+                        .foregroundStyle(lastResult.isSuccess ? Color.primary : Color.red)
                 }
             }
         }
