@@ -11,6 +11,11 @@ final class ClearerUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         XCTAssertTrue(app.staticTexts["Clearer"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Continuar"].exists)
+        // `.exists` alone doesn't wait/retry — checking it right after a
+        // `waitForExistence` succeeded elsewhere isn't a guarantee this
+        // other element has finished laying out too (bit us once already:
+        // TabView's UIKit-backed paging seems to settle its chrome a beat
+        // after the current page's own content is already queryable).
+        XCTAssertTrue(app.buttons["Continuar"].waitForExistence(timeout: 5))
     }
 }
