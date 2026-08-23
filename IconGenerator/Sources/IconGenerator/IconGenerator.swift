@@ -16,9 +16,20 @@ struct AppIconView: View {
         ZStack {
             background
 
-            ghostCard(rotation: -11, offset: CGSize(width: 100, height: -88), opacity: 0.14)
-            ghostCard(rotation: -5.5, offset: CGSize(width: 50, height: -44), opacity: 0.30)
-            keptCard()
+            // The kept card alone sits dead-center, but the ghost cards only
+            // extend up-and-right from it — so the group's actual visual
+            // center of mass sits well right of canvas center, not on it.
+            // Shifting the whole group left-and-down by roughly half the
+            // farthest ghost's offset re-centers the composition as a
+            // whole, not just its front card. (Checked by re-rendering,
+            // not just computed — rotation makes the exact bounding box
+            // messy to get right analytically.)
+            Group {
+                ghostCard(rotation: -11, offset: CGSize(width: 100, height: -88), opacity: 0.14)
+                ghostCard(rotation: -5.5, offset: CGSize(width: 50, height: -44), opacity: 0.30)
+                keptCard()
+            }
+            .offset(x: -48, y: 42)
         }
         .frame(width: 1024, height: 1024)
     }
