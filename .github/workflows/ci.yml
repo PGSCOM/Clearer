@@ -30,8 +30,27 @@ jobs:
           fi
           echo "OK: no PhotoKit image requests outside PhotoLibrary.swift"
 
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ runner.os }}-xcodegen
+          restore-keys: brew-${{ runner.os }}-
+
       - name: Install XcodeGen
         run: brew install xcodegen
+
+      # Cached DerivedData means `xcodebuild` can skip recompiling anything
+      # unchanged since the last run instead of building the whole project
+      # (and every system framework interface — SwiftUI, Photos, Vision,
+      # SwiftData) from a stone-cold cache every single push.
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: deriveddata-${{ runner.os }}-${{ hashFiles('project.yml', 'Sources/**/*.swift', 'Tests/**/*.swift', 'UITests/**/*.swift') }}
+          restore-keys: |
+            deriveddata-${{ runner.os }}-
 
       - name: Generate Xcode project
         run: xcodegen generate
