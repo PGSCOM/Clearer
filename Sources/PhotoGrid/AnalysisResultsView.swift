@@ -36,6 +36,7 @@ struct AnalysisResultsView: View {
                     Button(hasAnalyzed ? "Volver a analizar" : "Analizar fototeca") {
                         runAnalysis()
                     }
+                    .tint(.clearerAmber)
                 }
             }
 

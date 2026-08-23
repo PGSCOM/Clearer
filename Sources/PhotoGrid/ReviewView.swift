@@ -92,6 +92,7 @@ private struct ReviewCard: View {
             HStack(spacing: 16) {
                 Button("Mantener") { onDecision(false) }
                     .buttonStyle(.bordered)
+                    .tint(.clearerAmber)
                     .frame(maxWidth: .infinity)
                 Button("Eliminar", role: .destructive) { onDecision(true) }
                     .buttonStyle(.borderedProminent)
