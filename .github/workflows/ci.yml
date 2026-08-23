@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVICE_NAME: iPhone 16
+      BUNDLE_ID: com.pablogarcia.fotiacleaner
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The whole point of this app is that it never downloads a full-res
+      # original from iCloud. That invariant only holds if exactly one file
+      # ever talks to PHImageManager. This is the cheapest possible check
+      # for the single most important thing in the project — fails the
+      # build if anything outside PhotoLibrary.swift requests an image.
+      - name: Guard — PhotoKit access confined to PhotoLibrary.swift
+        run: |
+          MATCHES=$(grep -rlE "PHImageManager|PHCachingImageManager|\.requestImage\(" --include="*.swift" Sources 2>/dev/null | grep -v "Sources/Photos/PhotoLibrary.swift" || true)
+          if [ -n "$MATCHES" ]; then
+            echo "::error::PhotoKit image requests found outside PhotoLibrary.swift. That file must stay the only place isNetworkAccessAllowed is set, or an iCloud original can get downloaded by accident."
+            echo "$MATCHES"
+            exit 1
+          fi
+          echo "OK: no PhotoKit image requests outside PhotoLibrary.swift"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Show Xcode & simulator versions
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available
+
+      - name: Run unit + UI tests
+        run: |
+          xcodebuild test \
+            -project FotIACleaner.xcodeproj \
+            -scheme FotIACleaner \
+            -destination "platform=iOS Simulator,name=${DEVICE_NAME},OS=latest" \
+            -resultBundlePath build/TestResults.xcresult
+
+      # Screenshot of the running app — this is how Pablo sees the UI
+      # without owning a Mac. Runs even if the test step above failed, so a
+      # broken build still leaves something to look at.
+      - name: Screenshot the running app
+        if: always()
+        run: |
+          mkdir -p build
+          UDID=$(xcrun simctl list devices booted | grep "$DEVICE_NAME" | grep -oE '[0-9A-F-]{36}' | head -1)
+          if [ -z "$UDID" ]; then
+            echo "No booted simulator found (tests likely failed before boot) — skipping screenshot."
+            exit 0
+          fi
+          xcrun simctl launch "$UDID" "$BUNDLE_ID"
+          sleep 2
+          xcrun simctl io "$UDID" screenshot build/screenshot.png
+
+      # Unsigned .ipa: a plain zip of the .app in Payload/, no signing
+      # identity involved. Good enough to inspect the build; installing it
+      # on a real device needs the signing path documented in SIGNING.md.
+      - name: Archive unsigned .ipa
+        if: success()
+        run: |
+          xcodebuild archive \
+            -project FotIACleaner.xcodeproj \
+            -scheme FotIACleaner \
+            -archivePath build/FotIACleaner.xcarchive \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" AD_HOC_CODE_SIGNING_ALLOWED=YES
+          mkdir -p build/Payload
+          cp -r build/FotIACleaner.xcarchive/Products/Applications/*.app build/Payload/
+          (cd build && zip -qr FotIACleaner-unsigned.ipa Payload)
+
+      - name: Upload CI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fotia-cleaner-build-${{ github.run_number }}
+          path: |
+            build/screenshot.png
+            build/TestResults.xcresult
+            build/FotIACleaner-unsigned.ipa
+          if-no-files-found: warn
+          retention-days: 14
