@@ -1,9 +1,13 @@
 import Photos
+import SwiftData
 import SwiftUI
 import UIKit
 
 struct PhotoGridView: View {
     let model: PhotoGridModel
+
+    @Environment(\.modelContext) private var modelContext
+    @State private var coordinator: AnalysisCoordinator?
 
     private let columns = [GridItem(.adaptive(minimum: 110), spacing: 2)]
 
@@ -16,6 +20,23 @@ struct PhotoGridView: View {
                         PhotoGridCell(asset: fetchResult.object(at: index), model: model)
                     }
                 }
+            }
+        }
+        .navigationTitle("Fotos")
+        .toolbar {
+            if let fetchResult = model.fetchResult, let coordinator {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        AnalysisResultsView(fetchResult: fetchResult, coordinator: coordinator)
+                    } label: {
+                        Image(systemName: "sparkles")
+                    }
+                }
+            }
+        }
+        .task {
+            if coordinator == nil {
+                coordinator = AnalysisCoordinator(modelContext: modelContext)
             }
         }
     }

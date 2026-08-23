@@ -29,7 +29,7 @@ final class PhotoGridModel {
         guard fetchResult == nil else { return }
         guard authorizationStatus == .authorized || authorizationStatus == .limited else { return }
         Task {
-            fetchResult = await PhotoLibrary.shared.fetchAllPhotos()
+            fetchResult = await PhotoLibrary.shared.fetchAllAssets()
         }
     }
 

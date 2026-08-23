@@ -11,7 +11,12 @@ struct ContentView: View {
         Group {
             switch model.authorizationStatus {
             case .authorized, .limited:
-                PhotoGridView(model: model)
+                // Only the grid gets a NavigationStack — the gate screen
+                // stays exactly as it was, with no stray empty nav bar
+                // above its centered content.
+                NavigationStack {
+                    PhotoGridView(model: model)
+                }
             default:
                 PhotoAccessGateView(status: model.authorizationStatus) {
                     Task { await model.requestAccess() }

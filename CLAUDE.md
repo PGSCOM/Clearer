@@ -50,6 +50,34 @@ romperlo la invalida entera. Se garantiza así:
   con Apple ID gratis). El Apple Developer Program de pago (Vía A, TestFlight/App Store) se
   activa cuando Pablo lo dé de alta.
 - **iOS 18.0 mínimo**, iPhone only (`TARGETED_DEVICE_FAMILY: "1"`) para la v1.
+- **No hay detector de desenfoque aparte.** `CalculateImageAestheticsScoresRequest.overallScore`
+  ya factoriza blur/exposición/composición internamente (confirmado por Apple, no expuesto como
+  propiedad separada), así que "foto mal tomada" es solo un umbral sobre ese mismo score que ya
+  calculamos para `isUtility`. Implementar varianza Laplaciana a mano (como decía el plan
+  original) se descartó a propósito: hubiera sido pixel-math sin forma de probarlo sin Xcode
+  local, duplicando una señal que Vision ya da gratis.
+- **Los feature prints (para agrupar casi-duplicados) viven solo en memoria, no en SwiftData.**
+  Persistirlos exigiría archivar `VNFeaturePrintObservation` vía `NSSecureCoding` — plausible
+  pero no confirmado con suficiente confianza para apostar a ciegas. Lo que SÍ se cachea en
+  SwiftData (`AssetAnalysis`) es el resultado de aesthetics (`overallScore`/`isUtility`), que es
+  la pasada de Vision realmente cara. Recalcular feature prints una vez por sesión es el precio
+  aceptado; subir el umbral de duplicados no cuesta nada porque las distancias se recalculan
+  sobre prints ya en memoria, no se vuelve a llamar a Vision.
+- **"Vídeos pesados" se quedó en "vídeos largos" (por duración, no por tamaño de fichero).** El
+  tamaño real solo se puede leer sin descargar vía un KVC no documentado
+  (`resource.value(forKey: "fileSize")`) que Apple explícitamente no garantiza y que es zona gris
+  para App Review. `asset.duration` es pública, gratis, y buen proxy.
+- **`PhotoLibrary.fetchAllAssets()`** (antes `fetchAllPhotos`) trae fotos Y vídeos — los
+  detectores de vídeo largo y Live Photo necesitan vídeos en el fetch. La rejilla de Fase 1 ya
+  funciona igual para ambos: `PHImageManager` devuelve un fotograma de portada para vídeos sin
+  cambios de código.
+- **La cobertura de CI de Fase 2 es solo lógica pura** (`Detectors`, `Grouping`, con tests reales).
+  La pantalla de análisis (settings + resultados) no se verifica en CI: hacerlo exigiría conceder
+  permiso de fotos sin interacción (`simctl privacy grant`) y sembrar imágenes fixture, lo que
+  además rompería el test de Fase 1 que depende de que el simulador arranque en `.notDetermined`.
+  Quedó fuera a propósito — es una pieza de ingeniería de CI aparte, no una tarea de esta fase. La
+  pipeline de Vision (`CalculateImageAestheticsScoresRequest` + `VNGenerateImageFeaturePrintRequest`)
+  solo se puede confirmar en el iPhone de Pablo, igual que el invariante de iCloud.
 
 ## Verificación
 

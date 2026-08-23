@@ -34,13 +34,14 @@ actor PhotoLibrary {
 
     // MARK: - Fetching
 
-    /// `PHFetchResult` is a lazy, index-backed view over the Photos
-    /// database — cheap to grab in full even for huge libraries, since
-    /// individual `PHAsset`s only get hydrated when actually accessed.
-    func fetchAllPhotos() -> PHFetchResult<PHAsset> {
+    /// Images AND videos — Fase 2's "vídeo largo" and "Live Photo" criteria
+    /// need videos in the fetch, not just stills. `PHFetchResult` is a
+    /// lazy, index-backed view over the Photos database — cheap to grab in
+    /// full even for huge libraries, since individual `PHAsset`s only get
+    /// hydrated when actually accessed.
+    func fetchAllAssets() -> PHFetchResult<PHAsset> {
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        options.predicate = NSPredicate(format: "mediaType = %d", PHAssetMediaType.image.rawValue)
         return PHAsset.fetchAssets(with: options)
     }
 
