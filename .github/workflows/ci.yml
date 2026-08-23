@@ -41,12 +41,29 @@ jobs:
           xcodebuild -version
           xcrun simctl list devices available
 
+      # xcodebuild test picks a destination by name/OS itself and shuts the
+      # simulator down again once tests finish — nothing is left "booted"
+      # for the next step to find. Resolving one explicit UDID up front and
+      # driving simctl ourselves for boot/launch/screenshot avoids relying
+      # on whatever state xcodebuild happens to leave behind.
+      - name: Resolve simulator UDID
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available | grep "$DEVICE_NAME (" | grep -oE '[0-9A-F-]{36}' | tail -1)
+          if [ -z "$UDID" ]; then
+            echo "::error::No available simulator matches '$DEVICE_NAME'"
+            exit 1
+          fi
+          echo "Using $DEVICE_NAME -> $UDID"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$UDID"
+
       - name: Run unit + UI tests
         run: |
           xcodebuild test \
             -project FotIACleaner.xcodeproj \
             -scheme FotIACleaner \
-            -destination "platform=iOS Simulator,name=${DEVICE_NAME},OS=latest" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
             -resultBundlePath build/TestResults.xcresult
 
       # Screenshot of the running app — this is how Pablo sees the UI
@@ -56,11 +73,8 @@ jobs:
         if: always()
         run: |
           mkdir -p build
-          UDID=$(xcrun simctl list devices booted | grep "$DEVICE_NAME" | grep -oE '[0-9A-F-]{36}' | head -1)
-          if [ -z "$UDID" ]; then
-            echo "No booted simulator found (tests likely failed before boot) — skipping screenshot."
-            exit 0
-          fi
+          UDID="${{ steps.sim.outputs.udid }}"
+          xcrun simctl boot "$UDID" 2>/dev/null || true # re-boot: xcodebuild shuts it down after test
           xcrun simctl launch "$UDID" "$BUNDLE_ID"
           sleep 2
           xcrun simctl io "$UDID" screenshot build/screenshot.png
