@@ -30,7 +30,7 @@ struct TrashView: View {
                         Text(formattedEstimate)
                             .foregroundStyle(.secondary)
                     }
-                    Text("Estimado a partir del tamaño de la imagen y la duración del vídeo — no hay forma de leer el peso exacto sin descargar el archivo.")
+                    Text("Estimado a partir del tamaño de la imagen y la duración del vídeo: no hay forma de leer el peso exacto sin descargar el archivo.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -138,7 +138,7 @@ private enum DeletionResult {
         case .success(let count):
             "Se borraron \(count) elementos."
         case .timedOut:
-            "Está tardando más de lo normal. Puede que ya se haya completado — revisa tu fototeca; si no, inténtalo de nuevo."
+            "Está tardando más de lo normal. Puede que ya se haya completado: revisa tu fototeca. Si no, inténtalo de nuevo."
         case .failure(let message):
             "No se pudo borrar: \(message)"
         }

@@ -35,10 +35,10 @@ analizarlas: las respeta tal como están.
 
 Cómo funciona:
 
-— Eliges qué buscar: capturas, recibos y documentos, fotos de baja calidad,
+- Eliges qué buscar: capturas, recibos y documentos, fotos de baja calidad,
   vídeos largos, ráfagas.
-— Revisas una a una lo que Clearer encontró, con el motivo a la vista.
-— Nada se borra hasta que tú lo confirmes. Dos veces: primero en la papelera
+- Revisas una a una lo que Clearer encontró, con el motivo a la vista.
+- Nada se borra hasta que tú lo confirmes. Dos veces: primero en la papelera
   propia de Clearer, luego en la confirmación nativa de iOS.
 
 Sin cuentas, sin conexión a internet necesaria. Clearer funciona igual con
@@ -77,14 +77,14 @@ near-duplicates piling up without you noticing.
 
 All the analysis happens on your iPhone. No photo ever leaves your phone.
 And if you have photos that only live in iCloud, Clearer never downloads
-them just to look at them — it leaves them exactly as they are.
+them just to look at them: it leaves them exactly as they are.
 
 How it works:
 
-— Choose what to look for: screenshots, receipts and documents, low-quality
+- Choose what to look for: screenshots, receipts and documents, low-quality
   photos, long videos, extra burst shots.
-— Review what Clearer found one at a time, with the reason right there.
-— Nothing gets deleted until you say so. Twice: first into Clearer's own
+- Review what Clearer found one at a time, with the reason right there.
+- Nothing gets deleted until you say so. Twice: first into Clearer's own
   trash, then iOS's own native confirmation.
 
 No account, no internet connection required. Clearer works exactly the same

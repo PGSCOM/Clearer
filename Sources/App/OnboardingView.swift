@@ -27,8 +27,7 @@ struct OnboardingView: View {
                     Button("Continuar") {
                         withAnimation { step = 1 }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.clearerAmber)
+                    .buttonStyle(.amberFilled)
                     .padding(.horizontal, 32)
                     .padding(.bottom, 40)
                 }
@@ -78,15 +77,14 @@ private struct PrivacyStep: View {
             VStack(alignment: .leading, spacing: 22) {
                 point("El análisis pasa en tu iPhone. Nunca se sube nada a ningún sitio.")
                 point("Las fotos que solo están en iCloud no se descargan para analizarlas.")
-                point("Tú decides qué se borra — nada se elimina sin que lo confirmes dos veces.")
+                point("Tú decides qué se borra. Nada se elimina sin que lo confirmes dos veces.")
             }
             .padding(.horizontal, 32)
             Spacer()
             Button("Dar acceso a mis fotos") {
                 onRequestAccess()
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.clearerAmber)
+            .buttonStyle(.amberFilled)
             .padding(.horizontal, 32)
             .padding(.bottom, 40)
         }

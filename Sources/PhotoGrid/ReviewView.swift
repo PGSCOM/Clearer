@@ -89,10 +89,13 @@ private struct ReviewCard: View {
                 }
             }
 
+            // Both filled, same weight, differentiated by color alone — not
+            // the stock filled-plus-outlined pairing. "Keep" isn't the
+            // lesser option here; ghosting it as an outline would wrongly
+            // suggest "Delete" is the default expected action.
             HStack(spacing: 16) {
                 Button("Mantener") { onDecision(false) }
-                    .buttonStyle(.bordered)
-                    .tint(.clearerAmber)
+                    .buttonStyle(.amberFilled)
                     .frame(maxWidth: .infinity)
                 Button("Eliminar", role: .destructive) { onDecision(true) }
                     .buttonStyle(.borderedProminent)

@@ -19,8 +19,7 @@ struct AccessDeniedView: View {
                     UIApplication.shared.open(url)
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.clearerAmber)
+            .buttonStyle(.amberFilled)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))

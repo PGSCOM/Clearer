@@ -151,22 +151,22 @@
         }
       }
     },
-    "Está tardando más de lo normal. Puede que ya se haya completado — revisa tu fototeca; si no, inténtalo de nuevo." : {
+    "Está tardando más de lo normal. Puede que ya se haya completado: revisa tu fototeca. Si no, inténtalo de nuevo." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This is taking longer than usual. It may have already finished — check your library; if not, try again."
+            "value" : "This is taking longer than usual. It may have already finished: check your library. If not, try again."
           }
         }
       }
     },
-    "Estimado a partir del tamaño de la imagen y la duración del vídeo — no hay forma de leer el peso exacto sin descargar el archivo." : {
+    "Estimado a partir del tamaño de la imagen y la duración del vídeo: no hay forma de leer el peso exacto sin descargar el archivo." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Estimated from the image size and video duration — there's no way to read the exact file size without downloading it."
+            "value" : "Estimated from the image size and video duration: there's no way to read the exact file size without downloading it."
           }
         }
       }
@@ -411,12 +411,12 @@
         }
       }
     },
-    "Tú decides qué se borra — nada se elimina sin que lo confirmes dos veces." : {
+    "Tú decides qué se borra. Nada se elimina sin que lo confirmes dos veces." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "You decide what gets deleted — nothing is removed without confirming twice."
+            "value" : "You decide what gets deleted. Nothing is removed without confirming twice."
           }
         }
       }
