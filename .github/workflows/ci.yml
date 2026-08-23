@@ -13,7 +13,7 @@ jobs:
       BUNDLE_ID: com.pablogarcia.clearer
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The whole point of this app is that it never downloads a full-res
       # original from iCloud. That invariant only holds if exactly one file
@@ -31,7 +31,7 @@ jobs:
           echo "OK: no PhotoKit image requests outside PhotoLibrary.swift"
 
       - name: Cache Homebrew downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/Library/Caches/Homebrew
           key: brew-${{ runner.os }}-xcodegen
@@ -45,7 +45,7 @@ jobs:
       # (and every system framework interface — SwiftUI, Photos, Vision,
       # SwiftData) from a stone-cold cache every single push.
       - name: Cache DerivedData
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/Library/Developer/Xcode/DerivedData
           key: deriveddata-${{ runner.os }}-${{ hashFiles('project.yml', 'Sources/**/*.swift', 'Tests/**/*.swift', 'UITests/**/*.swift') }}
@@ -116,7 +116,7 @@ jobs:
 
       - name: Upload CI artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: clearer-build-${{ github.run_number }}
           path: |
