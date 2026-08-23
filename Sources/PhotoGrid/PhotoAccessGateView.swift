@@ -29,9 +29,9 @@ struct PhotoAccessGateView: View {
     private var message: String {
         switch status {
         case .denied, .restricted:
-            "Has denegado el acceso a fotos. Actívalo en Ajustes para que FotIA Cleaner pueda revisar tu fototeca."
+            "Has denegado el acceso a fotos. Actívalo en Ajustes para que Clearer pueda revisar tu fototeca."
         default:
-            "FotIA Cleaner necesita ver tus fotos para ayudarte a encontrar las que sobran. Nunca las sube a ningún sitio, y las que están solo en iCloud no se descargan."
+            "Clearer necesita ver tus fotos para ayudarte a encontrar las que sobran. Nunca las sube a ningún sitio, y las que están solo en iCloud no se descargan."
         }
     }
 

@@ -10,7 +10,7 @@ jobs:
     timeout-minutes: 30
     env:
       DEVICE_NAME: iPhone 16
-      BUNDLE_ID: com.pablogarcia.fotiacleaner
+      BUNDLE_ID: com.pablogarcia.clearer
 
     steps:
       - uses: actions/checkout@v4
@@ -61,8 +61,8 @@ jobs:
       - name: Run unit + UI tests
         run: |
           xcodebuild test \
-            -project FotIACleaner.xcodeproj \
-            -scheme FotIACleaner \
+            -project Clearer.xcodeproj \
+            -scheme Clearer \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -resultBundlePath build/TestResults.xcresult
 
@@ -86,23 +86,23 @@ jobs:
         if: success()
         run: |
           xcodebuild archive \
-            -project FotIACleaner.xcodeproj \
-            -scheme FotIACleaner \
-            -archivePath build/FotIACleaner.xcarchive \
+            -project Clearer.xcodeproj \
+            -scheme Clearer \
+            -archivePath build/Clearer.xcarchive \
             -destination "generic/platform=iOS" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" AD_HOC_CODE_SIGNING_ALLOWED=YES
           mkdir -p build/Payload
-          cp -r build/FotIACleaner.xcarchive/Products/Applications/*.app build/Payload/
-          (cd build && zip -qr FotIACleaner-unsigned.ipa Payload)
+          cp -r build/Clearer.xcarchive/Products/Applications/*.app build/Payload/
+          (cd build && zip -qr Clearer-unsigned.ipa Payload)
 
       - name: Upload CI artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: fotia-cleaner-build-${{ github.run_number }}
+          name: clearer-build-${{ github.run_number }}
           path: |
             build/screenshot.png
             build/TestResults.xcresult
-            build/FotIACleaner-unsigned.ipa
+            build/Clearer-unsigned.ipa
           if-no-files-found: warn
           retention-days: 14

@@ -33,7 +33,7 @@ openssl pkcs12 -export \
 ```
 
 **4. Perfil de aprovisionamiento**: en el mismo portal, crear un identificador de app
-(`com.pablogarcia.fotiacleaner`, el mismo de `project.yml`), luego un perfil "App Store" o
+(`com.pablogarcia.clearer`, el mismo de `project.yml`), luego un perfil "App Store" o
 "Ad Hoc" que use el certificado del paso 2. Descargar el `.mobileprovision`.
 
 **5. Clave de App Store Connect API** (para que la Action pueda subir el build sin tu

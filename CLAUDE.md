@@ -1,10 +1,18 @@
-# FotIA Cleaner — contexto para Claude Code
+# Clearer — contexto para Claude Code
 
 App iOS nativa (Swift/SwiftUI) para liberar espacio en la fototeca detectando fotos que sobran
 (capturas, borrosas, duplicados, ráfagas...) según criterios que el usuario activa en un
 onboarding. Se publicará en la App Store. El plan completo, con el razonamiento detrás de cada
 decisión, vive en `~/.claude/plans/quiero-que-hagas-una-shiny-sketch.md` de Pablo — este fichero
 resume lo que no hay que reinterpretar.
+
+**Nombre**: el proyecto se llamó "FotIA Cleaner" hasta la Fase 4 (23/08/2026) — el plan había
+señalado "Cleaner" como riesgo de posicionamiento (categoría plagada de apps de suscripción
+abusiva que Apple vigila de cerca). Se renombró a **Clearer** — sin colisión directa encontrada en
+la App Store, mismo registro sonoro que "Cleaner" pero significa claridad, no limpieza. El target,
+bundle ID (`com.pablogarcia.clearer`), repo de GitHub y todo el código ya reflejan el nombre nuevo;
+si encuentras "FotIA Cleaner"/"fotiacleaner" en algún sitio es un resto sin renombrar, no una
+referencia intencional.
 
 ## El no-negociable del proyecto
 
@@ -40,7 +48,7 @@ romperlo la invalida entera. Se garantiza así:
   (`PHAssetCollectionChangeRequest`), nunca como IPTC/EXIF en el fichero: escribir metadatos
   exigiría bajar el original de iCloud, contradice el no-negociable de arriba, y Fotos ni
   siquiera muestra esos campos. iOS tampoco expone API pública para el caption/nota de una foto.
-- **Sin Mac.** Pablo desarrolla en Windows. El proyecto Xcode (`FotIACleaner.xcodeproj`) **no se
+- **Sin Mac.** Pablo desarrolla en Windows. El proyecto Xcode (`Clearer.xcodeproj`) **no se
   versiona** — lo genera XcodeGen desde `project.yml` en cada build. Para tocar el proyecto
   (targets, settings, schemes) se edita `project.yml`, nunca un `.xcodeproj` a mano.
 - **La compilación y los tests corren en GitHub Actions** (runner macOS), no localmente. El

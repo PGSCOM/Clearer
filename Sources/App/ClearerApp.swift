@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 
 @main
-struct FotIACleanerApp: App {
+struct ClearerApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()

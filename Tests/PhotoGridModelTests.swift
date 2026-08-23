@@ -1,6 +1,6 @@
 import XCTest
 import UIKit
-@testable import FotIACleaner
+@testable import Clearer
 
 /// `PhotoGridModel.noteThumbnailResult` takes a plain asset ID instead of a
 /// `PHAsset` specifically so this is testable without a live photo library

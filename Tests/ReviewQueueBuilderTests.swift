@@ -1,5 +1,5 @@
 import XCTest
-@testable import FotIACleaner
+@testable import Clearer
 
 final class ReviewQueueBuilderTests: XCTestCase {
     func testEmptyInputProducesEmptyQueue() {

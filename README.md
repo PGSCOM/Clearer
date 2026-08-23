@@ -1,2 +1,2 @@
-# FotIA Cleaner
+# Clearer
 

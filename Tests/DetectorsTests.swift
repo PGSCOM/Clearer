@@ -1,6 +1,6 @@
 import Photos
 import XCTest
-@testable import FotIACleaner
+@testable import Clearer
 
 final class DetectorsTests: XCTestCase {
     private func signals(
