@@ -102,12 +102,12 @@ final class DetectorsTests: XCTestCase {
     // MARK: - Burst duplicates
 
     func testSingleAssetBurstHasNoDuplicates() {
-        let result = Detectors.burstDuplicateIDs(in: [(id: "a", overallScore: 0.5)])
+        let result = Detectors.excessIDs(in: [(id: "a", overallScore: 0.5)])
         XCTAssertTrue(result.isEmpty)
     }
 
     func testBurstKeepsHighestScoringAsset() {
-        let result = Detectors.burstDuplicateIDs(in: [
+        let result = Detectors.excessIDs(in: [
             (id: "a", overallScore: 0.2),
             (id: "b", overallScore: 0.9),
             (id: "c", overallScore: 0.5),
@@ -116,7 +116,7 @@ final class DetectorsTests: XCTestCase {
     }
 
     func testBurstTieKeepsTheFirstOccurrence() {
-        let result = Detectors.burstDuplicateIDs(in: [
+        let result = Detectors.excessIDs(in: [
             (id: "a", overallScore: 0.5),
             (id: "b", overallScore: 0.5),
         ])
@@ -124,7 +124,7 @@ final class DetectorsTests: XCTestCase {
     }
 
     func testBurstTreatsMissingScoreAsLowestPriority() {
-        let result = Detectors.burstDuplicateIDs(in: [
+        let result = Detectors.excessIDs(in: [
             (id: "a", overallScore: nil),
             (id: "b", overallScore: 0.1),
         ])

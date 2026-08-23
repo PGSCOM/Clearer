@@ -1,10 +1,10 @@
 import Photos
 import SwiftUI
 
-/// Fase 2's whole surface: pick which criteria matter, run the analysis,
-/// see counts. Deliberately doesn't let you act on anything yet — swiping
-/// through and deleting is Fase 3. This is "how many, of what kind", not
-/// "review and clean."
+/// Pick which criteria matter, run the analysis, see counts, then jump into
+/// review. The actual reviewing/deleting lives in `ReviewView`/`TrashView`
+/// — this screen is "how many, of what kind" plus the entry point into
+/// "now do something about it."
 struct AnalysisResultsView: View {
     let fetchResult: PHFetchResult<PHAsset>
     let coordinator: AnalysisCoordinator
@@ -14,6 +14,13 @@ struct AnalysisResultsView: View {
     @State private var counts: [CleanupReason: Int] = [:]
     @State private var duplicateGroupCount = 0
     @State private var hasAnalyzed = false
+
+    // Raw data behind `counts`, kept around so the review queue can be
+    // rebuilt without a second full pass over `fetchResult`.
+    @State private var flaggedSingles: [(id: String, reasons: Set<CleanupReason>)] = []
+    @State private var burstGroups: [[(id: String, overallScore: Float?)]] = []
+    @State private var duplicateGroupsWithScores: [[(id: String, overallScore: Float?)]] = []
+    @State private var reviewItems: [ReviewItem] = []
 
     var body: some View {
         List {
@@ -61,6 +68,26 @@ struct AnalysisResultsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                if !reviewItems.isEmpty {
+                    Section {
+                        NavigationLink {
+                            ReviewView(reviewItems: reviewItems, coordinator: coordinator)
+                        } label: {
+                            Text("Revisar \(reviewItems.count) fotos")
+                        }
+                    }
+                } else if !coordinator.pendingDeletionIDs.isEmpty {
+                    // Everything's been reviewed already, but the trash
+                    // from a previous pass is still sitting there.
+                    Section {
+                        NavigationLink {
+                            TrashView(coordinator: coordinator)
+                        } label: {
+                            Text("Papelera (\(coordinator.pendingDeletionIDs.count))")
+                        }
+                    }
+                }
             }
         }
         .navigationTitle("Análisis")
@@ -93,6 +120,7 @@ struct AnalysisResultsView: View {
     private func recomputeCounts() {
         var tally: [CleanupReason: Int] = [:]
         var burstsByID: [String: [(id: String, overallScore: Float?)]] = [:]
+        var singles: [(id: String, reasons: Set<CleanupReason>)] = []
 
         for index in 0..<fetchResult.count {
             let asset = fetchResult.object(at: index)
@@ -106,21 +134,32 @@ struct AnalysisResultsView: View {
                 overallScore: cached?.overallScore,
                 isUtility: cached?.isUtility
             )
-            for reason in Detectors.reasons(for: signals, criteria: criteria) {
+            let reasons = Detectors.reasons(for: signals, criteria: criteria)
+            for reason in reasons {
                 tally[reason, default: 0] += 1
+            }
+            if !reasons.isEmpty {
+                singles.append((asset.localIdentifier, reasons))
             }
             if let burstID = asset.burstIdentifier {
                 burstsByID[burstID, default: []].append((asset.localIdentifier, cached?.overallScore))
             }
         }
 
+        var burstGroupsList: [[(id: String, overallScore: Float?)]] = []
         if criteria.flagBurstDuplicates {
-            tally[.burstDuplicate] = burstsByID.values.reduce(0) { total, burst in
-                total + Detectors.burstDuplicateIDs(in: burst).count
+            var burstDuplicateCount = 0
+            for burst in burstsByID.values where burst.count > 1 {
+                burstDuplicateCount += Detectors.excessIDs(in: burst).count
+                burstGroupsList.append(burst)
             }
+            tally[.burstDuplicate] = burstDuplicateCount
         }
 
         counts = tally
+        flaggedSingles = singles
+        burstGroups = burstGroupsList
+        rebuildReviewQueue()
     }
 
     /// Only re-runs `Grouping`, not Vision — feature prints are already in
@@ -132,10 +171,23 @@ struct AnalysisResultsView: View {
             let id = fetchResult.object(at: index).localIdentifier
             return coordinator.featurePrints[id] != nil ? id : nil
         }
-        duplicateGroupCount = Grouping.groups(
+        let groups = Grouping.groups(
             ids: orderedIDs,
             threshold: duplicateThreshold,
             distance: coordinator.featurePrintDistance
-        ).count
+        )
+        duplicateGroupCount = groups.count
+        duplicateGroupsWithScores = groups.map { group in
+            group.map { (id: $0, overallScore: coordinator.scores[$0]?.overallScore) }
+        }
+        rebuildReviewQueue()
+    }
+
+    private func rebuildReviewQueue() {
+        reviewItems = ReviewQueueBuilder.build(
+            singleReasons: flaggedSingles,
+            burstGroups: criteria.flagBurstDuplicates ? burstGroups : [],
+            duplicateGroups: duplicateGroupsWithScores
+        )
     }
 }

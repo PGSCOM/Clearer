@@ -78,6 +78,26 @@ romperlo la invalida entera. Se garantiza así:
   Quedó fuera a propósito — es una pieza de ingeniería de CI aparte, no una tarea de esta fase. La
   pipeline de Vision (`CalculateImageAestheticsScoresRequest` + `VNGenerateImageFeaturePrintRequest`)
   solo se puede confirmar en el iPhone de Pablo, igual que el invariante de iCloud.
+- **El borrado usa `PHPhotoLibrary.shared().performChanges` con `withTimeout` (`Sources/Support/Timeout.swift`).**
+  Hay un bug confirmado (foro de Apple) donde el completion handler de `performChanges` a veces no
+  llega en algunos builds de iOS 26 al borrar. El timeout (20s) evita que la UI se quede colgada
+  esperando para siempre; si salta, el mensaje es deliberadamente ambiguo ("puede que ya se haya
+  completado") porque de verdad no lo sabemos — cancelar la Task no cancela la operación real de
+  PhotoKit, que sigue corriendo en segundo plano.
+- **"Espacio liberado" es una estimación, no un dato exacto** (`SpaceEstimator`), calculada solo
+  con propiedades públicas de `PHAsset` (`pixelWidth`/`pixelHeight`/`duration`) — mismo motivo que
+  el de "vídeos largos" en Fase 2: no existe API pública para el tamaño real de fichero sin
+  descargar. Se etiqueta como estimación en la UI (prefijo "~"), nunca como dato exacto.
+- **Los grupos de casi-duplicados/ráfagas NO tienen una pantalla de selección propia.** Cada foto
+  "de sobra" de un grupo (todas menos la que `Detectors.excessIDs` marca como mejor) entra en la
+  MISMA cola de revisión individual que el resto de criterios, etiquetada con el motivo. Se
+  descartó a propósito una vista de comparación lado a lado (grid multi-selección) por ser mucho
+  más superficie de UI para verificar a ciegas sin aportar nada que la revisión individual no dé
+  ya. Puede añadirse en Fase 4 si en el uso real se echa en falta.
+- **La "papelera" de la app es un `Set<String>` en memoria** (`AnalysisCoordinator.pendingDeletionIDs`),
+  no persistido en SwiftData — vive mientras el `AnalysisCoordinator` viva (la sesión de la
+  pestaña Fotos). Es una capa de seguridad ANTES del borrado real; una vez confirmado, el borrado
+  de PhotoKit tiene su propia confirmación nativa del sistema y su propia papelera de 30 días.
 
 ## Verificación
 

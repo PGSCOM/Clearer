@@ -42,8 +42,8 @@ struct CleanupCriteria: Equatable {
 
 enum Detectors {
     /// Reasons that apply to a single asset in isolation. Burst duplicates
-    /// and near-duplicates are group-level decisions — see
-    /// `burstDuplicateIDs` below and `Grouping`, respectively.
+    /// and near-duplicates are group-level decisions — see `excessIDs`
+    /// below and `Grouping`, respectively.
     static func reasons(for signals: AssetSignals, criteria: CleanupCriteria) -> Set<CleanupReason> {
         var reasons: Set<CleanupReason> = []
 
@@ -63,20 +63,21 @@ enum Detectors {
         return reasons
     }
 
-    /// Given the assets sharing one burst, returns the IDs that are NOT the
-    /// best shot (kept). Ties (equal or missing scores) keep whichever
-    /// comes first in the input.
-    static func burstDuplicateIDs(in burst: [(id: String, overallScore: Float?)]) -> Set<String> {
-        guard burst.count > 1 else { return [] }
-        guard let best = burst.max(by: { ($0.overallScore ?? -1) < ($1.overallScore ?? -1) }) else {
+    /// Given a group of assets that are all "the same shot" — a camera
+    /// burst OR a near-duplicate cluster from `Grouping`, same algorithm
+    /// either way — returns the IDs that are NOT the best one (kept). Ties
+    /// (equal or missing scores) keep whichever comes first in the input.
+    static func excessIDs(in group: [(id: String, overallScore: Float?)]) -> Set<String> {
+        guard group.count > 1 else { return [] }
+        guard let best = group.max(by: { ($0.overallScore ?? -1) < ($1.overallScore ?? -1) }) else {
             return []
         }
         // `max(by:)` picks the LAST element on ties, but we want to keep
         // the FIRST — find the true first-occurring max explicitly.
         let bestScore = best.overallScore ?? -1
-        guard let keptID = burst.first(where: { ($0.overallScore ?? -1) == bestScore })?.id else {
+        guard let keptID = group.first(where: { ($0.overallScore ?? -1) == bestScore })?.id else {
             return []
         }
-        return Set(burst.filter { $0.id != keptID }.map(\.id))
+        return Set(group.filter { $0.id != keptID }.map(\.id))
     }
 }

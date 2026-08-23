@@ -1,11 +1,12 @@
 import Photos
 import UIKit
 
-/// The ONLY file in this project allowed to touch PhotoKit's image-fetching
-/// APIs (`PHImageManager`, `PHCachingImageManager`, `.requestImage(`). CI
-/// enforces this with a grep guard (`.github/workflows/ci.yml`) — if you
-/// need a thumbnail or a photo list anywhere else, call through this actor,
-/// don't reach for PhotoKit directly.
+/// The single gateway to PhotoKit for the whole app — fetching, thumbnails,
+/// and deleting all live here, nowhere else. For the image-fetching APIs
+/// specifically (`PHImageManager`, `PHCachingImageManager`,
+/// `.requestImage(`) CI enforces this with a grep guard
+/// (`.github/workflows/ci.yml`); the rest is enforced by convention, since
+/// those calls don't carry the iCloud-download risk the guard exists for.
 ///
 /// The one rule that matters more than anything else in this app:
 /// `isNetworkAccessAllowed` is ALWAYS false here. That's what guarantees we
@@ -43,6 +44,13 @@ actor PhotoLibrary {
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         return PHAsset.fetchAssets(with: options)
+    }
+
+    /// Looks up a single asset by the ID other layers hold instead of a
+    /// live `PHAsset` (see `AssetSignals`'/`ReviewItem`'s doc comments for
+    /// why). A metadata-only query — cheap, no image data involved.
+    func asset(withID id: String) -> PHAsset? {
+        PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject
     }
 
     // MARK: - Thumbnails
@@ -87,6 +95,29 @@ actor PhotoLibrary {
                     continuation.resume(returning: .unavailable)
                 }
             }
+        }
+    }
+
+    // MARK: - Deleting
+
+    /// Deletes assets by ID. iOS shows its own native confirmation alert
+    /// for this — that's inherent to `PHAssetChangeRequest.deleteAssets`,
+    /// not something we trigger or could bypass — and deleted assets still
+    /// land in Photos' own "Recently Deleted" for 30 days on top of
+    /// whatever staging the app itself does.
+    ///
+    /// Fetches the assets INSIDE the change block (not from a
+    /// `PHFetchResult` captured from outside) — the documented-safe
+    /// pattern for this call, and it avoids carrying a non-`Sendable`
+    /// PhotoKit type across the actor boundary.
+    ///
+    /// Callers should race this against a timeout (`withTimeout`) —
+    /// `performChanges`'s completion has a confirmed, if rare, failure
+    /// mode on some iOS 26 builds where it never fires at all.
+    func deleteAssets(withIDs ids: [String]) async throws {
+        try await PHPhotoLibrary.shared().performChanges {
+            let assets = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+            PHAssetChangeRequest.deleteAssets(assets)
         }
     }
 }

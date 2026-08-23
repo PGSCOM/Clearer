@@ -29,6 +29,12 @@ final class AnalysisCoordinator {
     /// assetID -> feature print, in-memory only, this session.
     private(set) var featurePrints: [String: VNFeaturePrintObservation] = [:]
 
+    /// The app's own trash: assets the user marked for deletion during
+    /// review, staged here until `TrashView` commits them. Separate from
+    /// (and in addition to) Photos' own 30-day "Recently Deleted" — this
+    /// is the chance to change your mind BEFORE anything actually happens.
+    private(set) var pendingDeletionIDs: Set<String> = []
+
     private let modelContext: ModelContext
 
     init(modelContext: ModelContext) {
@@ -93,5 +99,49 @@ final class AnalysisCoordinator {
         var distance: Float = .greatestFiniteMagnitude
         try? a.computeDistance(&distance, to: b)
         return distance
+    }
+
+    // MARK: - Trash staging
+
+    func markForDeletion(_ id: String) {
+        pendingDeletionIDs.insert(id)
+    }
+
+    func unmarkForDeletion(_ id: String) {
+        pendingDeletionIDs.remove(id)
+    }
+
+    /// Rough "space freed" figure for the pending trash — see
+    /// `SpaceEstimator` for why this is an estimate, not an exact figure.
+    func estimatedFreedBytes() async -> Int64 {
+        var total: Int64 = 0
+        for id in pendingDeletionIDs {
+            guard let asset = await PhotoLibrary.shared.asset(withID: id) else { continue }
+            total += SpaceEstimator.estimatedBytes(
+                mediaType: asset.mediaType,
+                pixelWidth: asset.pixelWidth,
+                pixelHeight: asset.pixelHeight,
+                duration: asset.duration
+            )
+        }
+        return total
+    }
+
+    /// Called after a successful delete: drops the given IDs from every
+    /// piece of in-memory and persisted state that still references them —
+    /// they're gone, there's nothing left to cache.
+    func clearDeleted(_ ids: [String]) {
+        let idSet = Set(ids)
+        for id in ids {
+            pendingDeletionIDs.remove(id)
+            scores.removeValue(forKey: id)
+            featurePrints.removeValue(forKey: id)
+        }
+        if let cached = try? modelContext.fetch(FetchDescriptor<AssetAnalysis>()) {
+            for record in cached where idSet.contains(record.assetID) {
+                modelContext.delete(record)
+            }
+            try? modelContext.save()
+        }
     }
 }
