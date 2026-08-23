@@ -1,0 +1,24 @@
+name: Render App Icon
+
+# Manual only — this isn't part of the regular build. Run it whenever
+# IconGenerator/Sources/IconGenerator/IconGenerator.swift changes and you
+# want to see the result: Actions tab -> Render App Icon -> Run workflow.
+on:
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run icon generator
+        working-directory: IconGenerator
+        run: swift run IconGenerator ../AppIcon.png
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-icon
+          path: AppIcon.png
+          retention-days: 14
