@@ -1,3 +1,4 @@
+import AVFoundation
 import Observation
 import Photos
 import SwiftData
@@ -101,6 +102,35 @@ final class AnalysisCoordinator {
         return distance
     }
 
+    // MARK: - 4K video recoding
+
+    /// Recodes one video to a smaller resolution (bitrate and color space
+    /// preserved — see `VideoRecoder`), saves the result as a new asset, and
+    /// stages the original for deletion through the same trash flow as
+    /// every other cleanup decision. Returns the new asset's ID on success.
+    func recodeVideo(
+        id: String,
+        to target: VideoRecoder.Target,
+        onProgress: @escaping @Sendable (Double) -> Void
+    ) async throws -> String {
+        guard let phAsset = await PhotoLibrary.shared.asset(withID: id) else {
+            throw RecodeVideoError.assetNotFound
+        }
+        guard let avAsset = await PhotoLibrary.shared.avAsset(for: phAsset) else {
+            throw RecodeVideoError.iCloudOnly
+        }
+
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("mov")
+        defer { try? FileManager.default.removeItem(at: outputURL) }
+
+        try await VideoRecoder.recode(avAsset, to: target, outputURL: outputURL, onProgress: onProgress)
+        let newID = try await PhotoLibrary.shared.addVideoAsset(fileURL: outputURL)
+        markForDeletion(id)
+        return newID
+    }
+
     // MARK: - Trash staging
 
     func markForDeletion(_ id: String) {
@@ -137,6 +167,20 @@ final class AnalysisCoordinator {
                 modelContext.delete(record)
             }
             try? modelContext.save()
+        }
+    }
+}
+
+enum RecodeVideoError: Error {
+    case assetNotFound
+    case iCloudOnly
+}
+
+extension RecodeVideoError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .assetNotFound: "No se encontró el vídeo."
+        case .iCloudOnly: "Este vídeo solo está en iCloud: descárgalo antes de recodificarlo."
         }
     }
 }

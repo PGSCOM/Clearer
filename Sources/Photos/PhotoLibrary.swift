@@ -1,3 +1,4 @@
+import AVFoundation
 import Photos
 import UIKit
 
@@ -182,6 +183,43 @@ actor PhotoLibrary {
         inFlightOriginalRequest = nil
     }
 
+    // MARK: - Video track access (for on-device recoding)
+
+    /// Hands back the underlying `AVAsset` so `VideoRecoder` can read its
+    /// frames. Same iCloud rule as everywhere else: network access stays
+    /// off, so an asset that isn't fully on-device comes back `nil` instead
+    /// of triggering a download.
+    func avAsset(for asset: PHAsset) async -> AVAsset? {
+        await withCheckedContinuation { continuation in
+            let options = PHVideoRequestOptions()
+            options.isNetworkAccessAllowed = false
+            options.deliveryMode = .highQualityFormat
+            imageManager.requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
+                continuation.resume(returning: avAsset)
+            }
+        }
+    }
+
+    // MARK: - Saving a recoded video
+
+    /// Adds a recoded video file as a brand-new asset — it does not touch
+    /// the original. Callers stage the original for deletion themselves
+    /// (`AnalysisCoordinator.markForDeletion`) once this succeeds, reusing
+    /// the existing trash/review flow instead of a separate one. Returns
+    /// the new asset's local identifier.
+    func addVideoAsset(fileURL: URL) async throws -> String {
+        var placeholder: PHObjectPlaceholder?
+        try await PHPhotoLibrary.shared().performChanges {
+            let request = PHAssetCreationRequest.forAsset()
+            request.addResource(with: .video, fileURL: fileURL, options: nil)
+            placeholder = request.placeholderForCreatedAsset
+        }
+        guard let id = placeholder?.localIdentifier else {
+            throw SaveVideoError.missingPlaceholder
+        }
+        return id
+    }
+
     // MARK: - Deleting
 
     /// Deletes assets by ID. iOS shows its own native confirmation alert
@@ -216,6 +254,10 @@ enum OriginalImageResult {
     case image(UIImage)
     case cancelled
     case failed(String)
+}
+
+enum SaveVideoError: Error {
+    case missingPlaceholder
 }
 
 /// The subset of `PHAsset` metadata `SpaceEstimator` needs — a `Sendable`

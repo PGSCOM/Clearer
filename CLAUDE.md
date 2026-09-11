@@ -130,6 +130,23 @@ barrido — solo de un toque explícito sobre una foto, una a la vez. Se garanti
   completa) como en `PhotoViewer` (zoom/pan/doble-toque libres). El centrado sigue el patrón clásico
   de Apple (PhotoScroller): el `frame` de la `UIImageView` es el tamaño real en píxeles de la
   imagen y es `zoomScale` quien la redimensiona en pantalla — no una aproximación con `contentInset`.
+- **Filtro por fecha**: un rango opcional (desactivado por defecto) en `AnalysisResultsView`, sobre
+  `assetSnapshot` ya cargado en memoria — no un nuevo fetch de PhotoKit ni un `NSPredicate` en
+  `PHFetchOptions`. `Detectors` sigue sin saber nada de fechas: el filtrado vive solo en la vista,
+  igual que el resto del pipeline de conteo/revisión ya funcionaba sobre el snapshot.
+- **Recodificar vídeos 4K (Fase 6)**: `VideoRecoder` usa `AVAssetReader`/`AVAssetWriter`, no
+  `AVAssetExportSession` — los presets de export no dejan fijar un bitrate exacto ni pasar tal cual
+  los primarios de color/función de transferencia/matriz YCbCr del origen, que es justo lo que pide
+  "preservar bitrate y espacio de color". El resize pasa por un `AVMutableVideoComposition`
+  (compositor Core Animation, 8 bits) — un origen HDR 10 bits conserva la etiqueta de color
+  correcta pero pierde profundidad de bit; ver el comentario `ponytail:` en `VideoRecoder.swift`
+  para el techo exacto y cómo subirlo si hiciera falta. El audio se copia sin recodificar
+  (`outputSettings: nil`, passthrough). `PhotoLibrary.avAsset(for:)` sigue la misma regla de
+  iCloud que el resto del fichero (sin descarga automática): un vídeo que no está en el
+  dispositivo simplemente no aparece recodificable. El vídeo recodificado se añade como asset
+  nuevo (`PHAssetCreationRequest`) y el original se manda a la MISMA papelera
+  (`AnalysisCoordinator.markForDeletion`) que usa el resto de la app — no hay un borrado ni una
+  confirmación aparte para esto.
 
 ## Verificación
 

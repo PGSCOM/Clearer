@@ -15,6 +15,15 @@ struct AnalysisResultsView: View {
     @State private var duplicateGroupCount = 0
     @State private var hasAnalyzed = false
 
+    // Date filter — off by default, so it changes nothing until the user
+    // opts in. Applied everywhere counts/groups/review queue get computed,
+    // never as a separate pass over `PHAsset`.
+    @State private var dateFilterEnabled = false
+    @State private var startDate = Date()
+    @State private var endDate = Date()
+
+    @State private var fourKVideoIDs: [String] = []
+
     // Every asset's signals, read off `PHAsset` exactly once when analysis
     // finishes — not on every criteria toggle or slider drag. At ~10,000
     // photos, touching every `PHAsset` on each toggle is the difference
@@ -42,6 +51,16 @@ struct AnalysisResultsView: View {
                 } else {
                     Button(hasAnalyzed ? "Volver a analizar" : "Analizar fototeca") {
                         runAnalysis()
+                    }
+                }
+            }
+
+            if hasAnalyzed {
+                Section("Fecha") {
+                    Toggle("Filtrar por fecha", isOn: $dateFilterEnabled)
+                    if dateFilterEnabled {
+                        DatePicker("Desde", selection: $startDate, in: ...endDate, displayedComponents: .date)
+                        DatePicker("Hasta", selection: $endDate, in: startDate..., displayedComponents: .date)
                     }
                 }
             }
@@ -76,6 +95,16 @@ struct AnalysisResultsView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                if !fourKVideoIDs.isEmpty {
+                    Section("Vídeos 4K") {
+                        NavigationLink {
+                            VideoRecodeView(ids: fourKVideoIDs, coordinator: coordinator)
+                        } label: {
+                            Text("Recodificar \(fourKVideoIDs.count) vídeos a menor resolución")
+                        }
+                    }
+                }
+
                 if !reviewItems.isEmpty {
                     Section {
                         NavigationLink {
@@ -100,6 +129,9 @@ struct AnalysisResultsView: View {
         .navigationTitle("Análisis")
         .onChange(of: criteria) { _, _ in recomputeCounts() }
         .onChange(of: duplicateThreshold) { _, _ in recomputeDuplicateGroups() }
+        .onChange(of: dateFilterEnabled) { _, _ in recomputeCounts(); recomputeDuplicateGroups() }
+        .onChange(of: startDate) { _, _ in if dateFilterEnabled { recomputeCounts(); recomputeDuplicateGroups() } }
+        .onChange(of: endDate) { _, _ in if dateFilterEnabled { recomputeCounts(); recomputeDuplicateGroups() } }
     }
 
     private func resultRow(_ label: String, _ count: Int?) -> some View {
@@ -116,9 +148,30 @@ struct AnalysisResultsView: View {
             await coordinator.analyze(fetchResult)
             buildAssetSnapshot()
             hasAnalyzed = true
+            if let earliest = assetSnapshot.compactMap({ $0.signals.creationDate }).min() {
+                startDate = earliest
+            }
             recomputeCounts()
             recomputeDuplicateGroups()
         }
+    }
+
+    /// Whether `date` falls inside the user-picked range — always true while
+    /// the filter is off. Whole-day bounds: `endDate` includes every asset
+    /// from that calendar day, not just up to its exact timestamp. An asset
+    /// with no creation date (rare) is excluded once the filter is on, since
+    /// there's no date to check it against.
+    private func isInDateRange(_ date: Date?) -> Bool {
+        guard dateFilterEnabled else { return true }
+        guard let date else { return false }
+        let calendar = Calendar.current
+        let start = calendar.startOfDay(for: startDate)
+        let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: endDate)) ?? endDate
+        return date >= start && date < end
+    }
+
+    private func assetsInRange() -> [(id: String, signals: AssetSignals)] {
+        assetSnapshot.filter { isInDateRange($0.signals.creationDate) }
     }
 
     /// The one pass over live `PHAsset`s — reads exactly what `Detectors`
@@ -139,6 +192,9 @@ struct AnalysisResultsView: View {
                 isLivePhoto: asset.mediaSubtypes.contains(.photoLive),
                 burstIdentifier: asset.burstIdentifier,
                 duration: asset.duration,
+                creationDate: asset.creationDate,
+                pixelWidth: asset.pixelWidth,
+                pixelHeight: asset.pixelHeight,
                 overallScore: cached?.overallScore,
                 isUtility: cached?.isUtility
             )))
@@ -153,8 +209,9 @@ struct AnalysisResultsView: View {
         var tally: [CleanupReason: Int] = [:]
         var burstsByID: [String: [(id: String, overallScore: Float?)]] = [:]
         var singles: [(id: String, reasons: Set<CleanupReason>)] = []
+        var fourK: [String] = []
 
-        for (id, signals) in assetSnapshot {
+        for (id, signals) in assetsInRange() {
             let reasons = Detectors.reasons(for: signals, criteria: criteria)
             for reason in reasons {
                 tally[reason, default: 0] += 1
@@ -165,7 +222,11 @@ struct AnalysisResultsView: View {
             if let burstID = signals.burstIdentifier {
                 burstsByID[burstID, default: []].append((id, signals.overallScore))
             }
+            if signals.mediaType == .video, Detectors.isFourK(pixelWidth: signals.pixelWidth, pixelHeight: signals.pixelHeight) {
+                fourK.append(id)
+            }
         }
+        fourKVideoIDs = fourK
 
         var burstGroupsList: [[(id: String, overallScore: Float?)]] = []
         if criteria.flagBurstDuplicates {
@@ -187,8 +248,9 @@ struct AnalysisResultsView: View {
     /// memory and `assetSnapshot` is already in creation-date order, so
     /// dragging the slider is cheap and live with no `PHAsset` touches.
     private func recomputeDuplicateGroups() {
+        let inRangeIDs = Set(assetsInRange().map(\.id))
         let orderedIDs = assetSnapshot.compactMap { id, _ in
-            coordinator.featurePrints[id] != nil ? id : nil
+            inRangeIDs.contains(id) && coordinator.featurePrints[id] != nil ? id : nil
         }
         let groups = Grouping.groups(
             ids: orderedIDs,

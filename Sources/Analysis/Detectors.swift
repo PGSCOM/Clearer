@@ -11,6 +11,9 @@ struct AssetSignals {
     let isLivePhoto: Bool
     let burstIdentifier: String?
     let duration: TimeInterval
+    let creationDate: Date?
+    let pixelWidth: Int
+    let pixelHeight: Int
     /// nil until the Vision analysis pass has run for this asset.
     let overallScore: Float?
     /// nil until the Vision analysis pass has run for this asset.
@@ -79,5 +82,11 @@ enum Detectors {
             return []
         }
         return Set(group.filter { $0.id != keptID }.map(\.id))
+    }
+
+    /// 4K UHD is 3840 pixels on the long edge — orientation doesn't matter,
+    /// a portrait 2160×3840 recording counts the same as landscape.
+    static func isFourK(pixelWidth: Int, pixelHeight: Int) -> Bool {
+        max(pixelWidth, pixelHeight) >= 3840
     }
 }

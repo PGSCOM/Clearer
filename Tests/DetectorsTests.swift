@@ -9,6 +9,9 @@ final class DetectorsTests: XCTestCase {
         isLivePhoto: Bool = false,
         burstIdentifier: String? = nil,
         duration: TimeInterval = 0,
+        creationDate: Date? = nil,
+        pixelWidth: Int = 0,
+        pixelHeight: Int = 0,
         overallScore: Float? = nil,
         isUtility: Bool? = nil
     ) -> AssetSignals {
@@ -18,9 +21,20 @@ final class DetectorsTests: XCTestCase {
             isLivePhoto: isLivePhoto,
             burstIdentifier: burstIdentifier,
             duration: duration,
+            creationDate: creationDate,
+            pixelWidth: pixelWidth,
+            pixelHeight: pixelHeight,
             overallScore: overallScore,
             isUtility: isUtility
         )
+    }
+
+    // MARK: - 4K detection
+
+    func testIsFourKUsesLongEdgeRegardlessOfOrientation() {
+        XCTAssertTrue(Detectors.isFourK(pixelWidth: 3840, pixelHeight: 2160), "landscape 4K")
+        XCTAssertTrue(Detectors.isFourK(pixelWidth: 2160, pixelHeight: 3840), "portrait 4K")
+        XCTAssertFalse(Detectors.isFourK(pixelWidth: 1920, pixelHeight: 1080), "1080p is not 4K")
     }
 
     // MARK: - Per-criterion flagging
