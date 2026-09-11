@@ -19,4 +19,18 @@ enum SpaceEstimator {
             return Int64(Double(pixelWidth * pixelHeight) * bytesPerPixel)
         }
     }
+
+    /// Sum of `estimatedBytes` over a whole trash's worth of assets —
+    /// `AnalysisCoordinator.estimatedFreedBytes` is just this plus the
+    /// PhotoKit batch fetch that produces `inputs`.
+    static func totalEstimatedBytes(for inputs: [AssetSizeInput]) -> Int64 {
+        inputs.reduce(into: 0) { total, input in
+            total += estimatedBytes(
+                mediaType: input.mediaType,
+                pixelWidth: input.pixelWidth,
+                pixelHeight: input.pixelHeight,
+                duration: input.duration
+            )
+        }
+    }
 }

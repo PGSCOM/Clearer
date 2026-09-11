@@ -79,4 +79,39 @@ final class ReviewQueueBuilderTests: XCTestCase {
         )
         XCTAssertEqual(items.map(\.id), ["a", "b", "c"])
     }
+
+    // MARK: - pending(items:reviewed:)
+
+    func testPendingExcludesReviewedIDs() {
+        let items = [
+            ReviewItem(id: "a", reasons: [.screenshot]),
+            ReviewItem(id: "b", reasons: [.screenshot]),
+            ReviewItem(id: "c", reasons: [.screenshot]),
+        ]
+        let pending = ReviewQueueBuilder.pending(items: items, reviewed: ["a"])
+        XCTAssertEqual(pending.map(\.id), ["b", "c"])
+    }
+
+    func testPendingKeepsStableOrder() {
+        let items = [
+            ReviewItem(id: "a", reasons: [.screenshot]),
+            ReviewItem(id: "b", reasons: [.screenshot]),
+            ReviewItem(id: "c", reasons: [.screenshot]),
+        ]
+        let pending = ReviewQueueBuilder.pending(items: items, reviewed: [])
+        XCTAssertEqual(pending.map(\.id), ["a", "b", "c"])
+    }
+
+    func testPendingIgnoresReviewedIDsNoLongerInItems() {
+        // e.g. a criteria toggle dropped this ID out of the queue entirely
+        // since it was reviewed in a previous session.
+        let items = [ReviewItem(id: "b", reasons: [.screenshot])]
+        let pending = ReviewQueueBuilder.pending(items: items, reviewed: ["a", "b"])
+        XCTAssertTrue(pending.isEmpty)
+    }
+
+    func testPendingWithNothingReviewedReturnsEverything() {
+        let items = [ReviewItem(id: "a", reasons: [.screenshot])]
+        XCTAssertEqual(ReviewQueueBuilder.pending(items: items, reviewed: []), items)
+    }
 }

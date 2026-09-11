@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 import UIKit
 
@@ -5,23 +6,56 @@ import UIKit
 /// confirmation. Nothing here is destructive by itself — "Eliminar" only
 /// stages the asset in `coordinator.pendingDeletionIDs`; the actual delete
 /// (with iOS's own confirmation) happens in `TrashView`.
+///
+/// Built for a review session of thousands of photos, not a handful:
+/// thumbnails prefetch a few cards ahead (`ReviewImageStore`), where you
+/// left off is saved (`ReviewProgressRecord`) so leaving mid-way doesn't
+/// mean starting over, and a wrong tap can be undone.
+///
+/// `pendingQueue` + `cursor` — not a live filter of `reviewItems` on every
+/// access — is what keeps this responsive at scale: the correct-but-O(n)
+/// `ReviewQueueBuilder.pending` filter runs exactly once, on appear, to
+/// resume from persisted progress; every decision after that is an O(1)
+/// cursor move.
 struct ReviewView: View {
     let reviewItems: [ReviewItem]
     let coordinator: AnalysisCoordinator
 
-    @State private var currentIndex = 0
+    @Environment(\.modelContext) private var modelContext
+    @State private var store = ReviewImageStore()
+
+    @State private var pendingQueue: [ReviewItem] = []
+    @State private var cursor = 0
+    @State private var reviewedIDs: Set<String> = []
+    @State private var history: [Decision] = []
+    @State private var showViewer = false
+
+    private struct Decision {
+        let itemID: String
+        let wasDeleted: Bool
+    }
+
+    private var currentItem: ReviewItem? {
+        cursor < pendingQueue.count ? pendingQueue[cursor] : nil
+    }
+
+    private var cardTargetSize: CGSize {
+        let scale = UIScreen.main.scale
+        return CGSize(width: UIScreen.main.bounds.width * scale, height: UIScreen.main.bounds.height * scale)
+    }
 
     var body: some View {
         VStack(spacing: 20) {
-            if currentIndex < reviewItems.count {
-                let item = reviewItems[currentIndex]
-                ReviewCard(assetID: item.id, reasons: item.reasons) { shouldDelete in
-                    if shouldDelete {
-                        coordinator.markForDeletion(item.id)
-                    }
-                    currentIndex += 1
-                }
-                Text("\(currentIndex + 1) de \(reviewItems.count)")
+            if let item = currentItem {
+                ReviewCard(
+                    item: item,
+                    store: store,
+                    targetSize: cardTargetSize,
+                    onOpenViewer: { showViewer = true },
+                    onDecision: decide
+                )
+                .id(item.id)
+                Text("\(cursor + 1) de \(reviewItems.count)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -31,6 +65,15 @@ struct ReviewView: View {
         .padding()
         .navigationTitle("Revisar")
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    undo()
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .disabled(history.isEmpty)
+                .accessibilityLabel("Deshacer")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink {
                     TrashView(coordinator: coordinator)
@@ -38,6 +81,30 @@ struct ReviewView: View {
                     Label("\(coordinator.pendingDeletionIDs.count)", systemImage: "trash")
                 }
             }
+        }
+        .fullScreenCover(isPresented: $showViewer) {
+            if let item = currentItem {
+                PhotoViewer(
+                    assetID: item.id,
+                    store: store,
+                    thumbnail: store.thumbnails[item.id],
+                    onDecision: { shouldDelete in
+                        showViewer = false
+                        decide(item, shouldDelete: shouldDelete)
+                    },
+                    onClose: { showViewer = false }
+                )
+            }
+        }
+        .task {
+            reviewedIDs = ReviewProgressStore.load(from: modelContext)
+            pendingQueue = ReviewQueueBuilder.pending(items: reviewItems, reviewed: reviewedIDs)
+            cursor = 0
+            store.resetFullRes(for: currentItem?.id)
+            updatePrefetch()
+        }
+        .onDisappear {
+            ReviewProgressStore.save(reviewedIDs, to: modelContext)
         }
     }
 
@@ -53,62 +120,173 @@ struct ReviewView: View {
             } label: {
                 Text("Ir a la papelera (\(coordinator.pendingDeletionIDs.count))")
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.amberFilled)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func decide(_ item: ReviewItem, shouldDelete: Bool) {
+        guard currentItem?.id == item.id else { return } // stale callback (e.g. viewer closing) — ignore
+        if shouldDelete {
+            coordinator.markForDeletion(item.id)
+        }
+        reviewedIDs.insert(item.id)
+        history.append(Decision(itemID: item.id, wasDeleted: shouldDelete))
+        cursor += 1
+        store.resetFullRes(for: currentItem?.id)
+        updatePrefetch()
+        if history.count % 25 == 0 {
+            ReviewProgressStore.save(reviewedIDs, to: modelContext)
+        }
+    }
+
+    private func undo() {
+        guard let last = history.popLast(), cursor > 0 else { return }
+        if last.wasDeleted {
+            coordinator.unmarkForDeletion(last.itemID)
+        }
+        reviewedIDs.remove(last.itemID)
+        cursor -= 1
+        store.resetFullRes(for: currentItem?.id)
+        updatePrefetch()
+    }
+
+    /// Keeps a handful of thumbnails warm around the current card — see
+    /// `ReviewImageStore.keepWarmIDs` for the actual windowing logic. Both
+    /// slices here are bounded by a small constant regardless of queue
+    /// size: `pendingQueue[cursor...]` is an O(1) view, and only its first
+    /// few elements ever get mapped to IDs.
+    private func updatePrefetch() {
+        let upcoming = pendingQueue[cursor...].prefix(4).map(\.id)
+        let recent = history.suffix(1).map(\.itemID)
+        let keep = ReviewImageStore.keepWarmIDs(pending: Array(upcoming), recentlyReviewed: recent)
+        store.updateWindow(keepIDs: keep, targetSize: cardTargetSize)
     }
 }
 
 private struct ReviewCard: View {
-    let assetID: String
-    let reasons: Set<CleanupReason>
-    let onDecision: (_ shouldDelete: Bool) -> Void
+    let item: ReviewItem
+    let store: ReviewImageStore
+    let targetSize: CGSize
+    let onOpenViewer: () -> Void
+    let onDecision: (_ item: ReviewItem, _ shouldDelete: Bool) -> Void
 
-    @State private var image: UIImage?
+    @State private var pinchScale: CGFloat = 1
+
+    private var displayedImage: UIImage? {
+        (store.fullResID == item.id ? store.fullResImage : nil) ?? store.thumbnails[item.id]
+    }
 
     var body: some View {
         VStack(spacing: 16) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 16).fill(.quaternary)
-                if let image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                }
-            }
-            .frame(maxHeight: 420)
+            photo
+            reasonLine
+            downloadRow
+            decisionButtons
+        }
+    }
 
-            HStack(spacing: 6) {
-                ForEach(Array(reasons).sorted(by: { $0.rawValue < $1.rawValue }), id: \.self) { reason in
-                    Text(reasonLabel(reason))
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.secondary.opacity(0.15), in: Capsule())
-                }
-            }
-
-            // Both filled, same weight, differentiated by color alone — not
-            // the stock filled-plus-outlined pairing. "Keep" isn't the
-            // lesser option here; ghosting it as an outline would wrongly
-            // suggest "Delete" is the default expected action.
-            HStack(spacing: 16) {
-                Button("Mantener") { onDecision(false) }
-                    .buttonStyle(.amberFilled)
-                    .frame(maxWidth: .infinity)
-                Button("Eliminar", role: .destructive) { onDecision(true) }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
+    private var photo: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 20).fill(.quaternary)
+            if let displayedImage {
+                Image(uiImage: displayedImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else if store.failedIDs.contains(item.id) {
+                failedPlaceholder
+            } else {
+                ProgressView()
             }
         }
-        .task(id: assetID) {
-            image = nil
-            guard let asset = await PhotoLibrary.shared.asset(withID: assetID) else { return }
-            let result = await PhotoLibrary.shared.thumbnail(for: asset, targetSize: CGSize(width: 900, height: 900))
-            if case .available(let fetched) = result {
-                image = fetched
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .contentShape(RoundedRectangle(cornerRadius: 20))
+        .accessibilityIdentifier("reviewPhoto")
+        .scaleEffect(pinchScale)
+        .onTapGesture { onOpenViewer() }
+        // `.simultaneousGesture`, not `.gesture` — SwiftUI treats two
+        // `.gesture()`-attached recognizers on one view as exclusive by
+        // default, and a plain tap should still open the viewer even
+        // though a pinch also can.
+        .simultaneousGesture(
+            MagnifyGesture()
+                .onChanged { value in
+                    pinchScale = min(value.magnification, 1.3)
+                }
+                .onEnded { value in
+                    let didPinchOpen = value.magnification > 1.15
+                    withAnimation(.easeOut(duration: 0.15)) { pinchScale = 1 }
+                    if didPinchOpen { onOpenViewer() }
+                }
+        )
+    }
+
+    private var failedPlaceholder: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text("No se pudo cargar la foto")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Button("Reintentar") {
+                store.retry(id: item.id, targetSize: targetSize)
             }
+            .buttonStyle(.bordered)
+            .tint(.clearerAmber)
+        }
+    }
+
+    private var reasonLine: some View {
+        Text(item.reasons.sorted(by: { $0.rawValue < $1.rawValue }).map(reasonLabel).joined(separator: " · "))
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private var downloadRow: some View {
+        switch store.downloadState {
+        case .idle:
+            Button {
+                store.downloadOriginal(id: item.id)
+            } label: {
+                Label("Descargar original", systemImage: "icloud.and.arrow.down")
+            }
+            .font(.footnote.weight(.medium))
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+        case .downloading(let progress):
+            HStack(spacing: 6) {
+                ProgressView(value: progress).frame(width: 70)
+                Text(progress, format: .percent.precision(.fractionLength(0)))
+                    .monospacedDigit()
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        case .done:
+            Label("Original descargado", systemImage: "checkmark.circle.fill")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.secondary)
+        case .failed:
+            Button {
+                store.downloadOriginal(id: item.id)
+            } label: {
+                Label("Reintentar", systemImage: "arrow.clockwise")
+            }
+            .font(.footnote.weight(.medium))
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private var decisionButtons: some View {
+        HStack(spacing: 16) {
+            Button("Mantener") { onDecision(item, false) }
+                .buttonStyle(.reviewKeep)
+            Button("Eliminar", role: .destructive) { onDecision(item, true) }
+                .buttonStyle(.reviewDelete)
         }
     }
 

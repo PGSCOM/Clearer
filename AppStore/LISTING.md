@@ -31,7 +31,9 @@ una, casi-duplicados que se acumulan sin que te dieras cuenta.
 
 Todo el análisis pasa en tu iPhone. Ninguna foto sale de tu teléfono, nunca.
 Y si tienes fotos guardadas solo en iCloud, Clearer no las descarga para
-analizarlas: las respeta tal como están.
+analizarlas: las respeta tal como están. Si una foto en concreto se ve mal
+y quieres decidir con más calidad, puedes pedir verla en su resolución
+original — eso sí baja de iCloud, pero solo esa foto y solo si tú lo pides.
 
 Cómo funciona:
 
@@ -77,7 +79,10 @@ near-duplicates piling up without you noticing.
 
 All the analysis happens on your iPhone. No photo ever leaves your phone.
 And if you have photos that only live in iCloud, Clearer never downloads
-them just to look at them: it leaves them exactly as they are.
+them just to look at them: it leaves them exactly as they are. If a
+particular photo looks rough and you want a closer look before deciding,
+you can ask to see it at full resolution — that does download from
+iCloud, but only that one photo, and only when you ask for it.
 
 How it works:
 
