@@ -168,16 +168,31 @@ final class AnalysisCoordinator {
     /// preserved — see `VideoRecoder`), saves the result as a new asset, and
     /// stages the original for deletion through the same trash flow as
     /// every other cleanup decision. Returns the new asset's ID on success.
+    ///
+    /// Tries the no-network `avAsset(for:)` first — most videos are already
+    /// on-device. Only if that comes back nil (the video is iCloud-only)
+    /// does this fall back to `avAssetDownloadingIfNeeded`, the one place
+    /// besides "Download original" where the app downloads from iCloud —
+    /// still gated on this one explicit "Recodificar" tap, one video at a
+    /// time, never automatic.
     func recodeVideo(
         id: String,
         to target: VideoRecoder.Target,
-        onProgress: @escaping @Sendable (Double) -> Void
+        onProgress: @escaping @Sendable (RecodeProgress) -> Void
     ) async throws -> String {
         guard let phAsset = await PhotoLibrary.shared.asset(withID: id) else {
             throw RecodeVideoError.assetNotFound
         }
-        guard let avAsset = await PhotoLibrary.shared.avAsset(for: phAsset) else {
-            throw RecodeVideoError.iCloudOnly
+
+        let avAsset: AVAsset
+        if let local = await PhotoLibrary.shared.avAsset(for: phAsset) {
+            avAsset = local
+        } else if let downloaded = await PhotoLibrary.shared.avAssetDownloadingIfNeeded(for: phAsset, onProgress: { progress in
+            onProgress(.downloading(progress))
+        }) {
+            avAsset = downloaded
+        } else {
+            throw RecodeVideoError.downloadFailed
         }
 
         let outputURL = FileManager.default.temporaryDirectory
@@ -185,7 +200,9 @@ final class AnalysisCoordinator {
             .appendingPathExtension("mov")
         defer { try? FileManager.default.removeItem(at: outputURL) }
 
-        try await VideoRecoder.recode(avAsset, to: target, outputURL: outputURL, onProgress: onProgress)
+        try await VideoRecoder.recode(avAsset, to: target, outputURL: outputURL, onProgress: { progress in
+            onProgress(.recoding(progress))
+        })
         let newID = try await PhotoLibrary.shared.addVideoAsset(fileURL: outputURL)
         markForDeletion(id)
         // In case this video also matched "vídeos largos": it shouldn't
@@ -262,16 +279,24 @@ final class AnalysisCoordinator {
     }
 }
 
+/// `.downloading` while `recodeVideo` is pulling an iCloud-only video down
+/// first (see its doc comment); `.recoding` once `VideoRecoder` is actually
+/// re-encoding. `VideoModeView` switches on this to show the right label.
+enum RecodeProgress: Sendable {
+    case downloading(Double)
+    case recoding(Double)
+}
+
 enum RecodeVideoError: Error {
     case assetNotFound
-    case iCloudOnly
+    case downloadFailed
 }
 
 extension RecodeVideoError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .assetNotFound: "No se encontró el vídeo."
-        case .iCloudOnly: "Este vídeo solo está en iCloud: descárgalo antes de recodificarlo."
+        case .downloadFailed: "No se pudo descargar el vídeo desde iCloud."
         }
     }
 }

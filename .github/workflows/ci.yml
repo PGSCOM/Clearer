@@ -36,21 +36,24 @@ jobs:
           fi
           echo "OK: no PhotoKit image requests outside PhotoLibrary.swift"
 
-      # PhotoLibrary.originalImage(for:onProgress:) is the one deliberate,
-      # user-triggered exception to "never download from iCloud" (see its
-      # doc comment). This guard makes sure it STAYS the one exception:
-      # `isNetworkAccessAllowed = true` must appear exactly once in all of
-      # Sources, and only in that file.
-      - name: Guard — isNetworkAccessAllowed = true appears exactly once
+      # PhotoLibrary.originalImage(for:onProgress:) (one photo original) and
+      # PhotoLibrary.avAssetDownloadingIfNeeded(for:onProgress:) (one video,
+      # only when recoding one that isn't on-device yet) are the two
+      # deliberate, user-triggered exceptions to "never download from
+      # iCloud" (see PhotoLibrary's doc comment). This guard makes sure
+      # there are exactly these two, and only in that file — a new one
+      # showing up (or one of these two duplicating itself) fails the build
+      # just as loudly as a leak outside PhotoLibrary.swift would.
+      - name: Guard — isNetworkAccessAllowed = true appears exactly twice
         run: |
           COUNT=$(grep -rc "isNetworkAccessAllowed = true" --include="*.swift" Sources 2>/dev/null | awk -F: '{sum+=$2} END {print sum+0}')
           OUTSIDE=$(grep -rl "isNetworkAccessAllowed = true" --include="*.swift" Sources 2>/dev/null | grep -v "Sources/Photos/PhotoLibrary.swift" || true)
-          if [ -n "$OUTSIDE" ] || [ "$COUNT" -ne 1 ]; then
-            echo "::error::isNetworkAccessAllowed = true must appear exactly once, only in PhotoLibrary.swift (found $COUNT occurrence(s))."
+          if [ -n "$OUTSIDE" ] || [ "$COUNT" -ne 2 ]; then
+            echo "::error::isNetworkAccessAllowed = true must appear exactly twice (the photo original download and the video-recode fallback download), only in PhotoLibrary.swift (found $COUNT occurrence(s))."
             echo "$OUTSIDE"
             exit 1
           fi
-          echo "OK: isNetworkAccessAllowed = true appears exactly once, in PhotoLibrary.swift"
+          echo "OK: isNetworkAccessAllowed = true appears exactly twice, both in PhotoLibrary.swift"
 
       - name: Cache Homebrew downloads
         uses: actions/cache@v6

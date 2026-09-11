@@ -25,6 +25,12 @@ struct VideoModeView: View {
 
     var body: some View {
         List {
+            Section {
+                Text("Se conservan el bitrate y el espacio de color originales: solo cambia la resolución. Si un vídeo aún no está descargado del todo, recodificarlo lo descarga primero.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             if coordinator.isMeasuringVideoSizes {
                 Section {
                     HStack(spacing: 10) {
@@ -111,6 +117,7 @@ private struct VideoModeRow: View {
 
     private enum Status: Equatable {
         case idle
+        case downloading(Double)
         case recoding(Double)
         case failed(String)
     }
@@ -193,6 +200,19 @@ private struct VideoModeRow: View {
                 .buttonStyle(.bordered)
                 .tint(.clearerAmber)
             }
+        case .downloading(let progress):
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("Descargando de iCloud")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    ProgressView(value: progress).frame(width: 60)
+                    Text(progress, format: .percent.precision(.fractionLength(0)))
+                        .monospacedDigit()
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
         case .recoding(let progress):
             HStack(spacing: 6) {
                 ProgressView(value: progress).frame(width: 60)
@@ -205,10 +225,15 @@ private struct VideoModeRow: View {
     }
 
     private func recode(to target: VideoRecoder.Target) async {
-        status = .recoding(0)
+        status = .downloading(0)
         do {
             _ = try await coordinator.recodeVideo(id: row.id, to: target) { progress in
-                Task { @MainActor in status = .recoding(progress) }
+                Task { @MainActor in
+                    switch progress {
+                    case .downloading(let value): status = .downloading(value)
+                    case .recoding(let value): status = .recoding(value)
+                    }
+                }
             }
             // Row disappears on its own next render: `recodeVideo` already
             // staged the original in `pendingDeletionIDs`, which

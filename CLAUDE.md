@@ -16,28 +16,40 @@ referencia intencional.
 
 ## El no-negociable del proyecto
 
-**Nunca se descarga una foto a resolución máxima desde iCloud de forma automática.** Es el motivo
-de ser de la app; romperlo por accidente la invalida entera. Desde Fase 5 hay UNA excepción
-deliberada y confinada: el usuario puede pedir explícitamente el original de una foto concreta
-(botón "Descargar original" en la revisión) para juzgar mejor una foto en baja resolución. Nunca
-pasa como parte del análisis, del scroll de la rejilla, del prefetch de la revisión, ni de ningún
-barrido — solo de un toque explícito sobre una foto, una a la vez. Se garantiza así:
+**Nunca se descarga una foto o vídeo a resolución máxima desde iCloud de forma automática.** Es el
+motivo de ser de la app; romperlo por accidente la invalida entera. Hay DOS excepciones deliberadas
+y confinadas, ninguna más:
+
+1. Desde Fase 5, el usuario puede pedir explícitamente el original de una foto concreta (botón
+   "Descargar original" en la revisión) para juzgar mejor una foto en baja resolución.
+2. Desde Fase 7, recodificar un vídeo (`VideoModeView` → "Recodificar" → elegir resolución) que
+   resulta no estar descargado del todo lo descarga primero, en vez de fallar con un error — sigue
+   siendo un toque explícito sobre un vídeo concreto, uno a la vez, nunca automático; simplemente ya
+   no hace falta un paso previo de "descarga esto primero" para poder actuar sobre él.
+
+Ninguna de las dos pasa como parte del análisis, del scroll de la rejilla, del prefetch de la
+revisión, de la medición de tamaño de vídeo (`measureVideoSizes`) ni de ningún barrido — solo de un
+toque explícito sobre un asset concreto, uno a la vez. Se garantiza así:
 
 - **`Sources/Photos/PhotoLibrary.swift` es el ÚNICO fichero que toca `PHImageManager`.**
   `isNetworkAccessAllowed` vale `false` en todo el fichero **salvo dentro de
-  `originalImage(for:onProgress:)`**, el único método que existe para esa descarga explícita. Todo
-  lo demás pide miniaturas a este actor, nunca a PhotoKit directamente. Las miniaturas piden
-  `deliveryMode = .fastFormat` a propósito, no solo por velocidad: es el único modo con el que
-  PhotoKit garantiza una única llamada al completion handler — con `.opportunistic` la segunda
-  pasada "mejor calidad" podría necesitar red (que tenemos desactivada) y no hay garantía
-  documentada de que llegue una llamada final en ese caso, así que se arriesgaría a colgar la
-  `continuation` para siempre. `originalImage` usa `.highQualityFormat` por el mismo motivo exacto.
+  `originalImage(for:onProgress:)` y `avAssetDownloadingIfNeeded(for:onProgress:)`**, los dos únicos
+  métodos que existen para esas descargas explícitas. Todo lo demás pide miniaturas/vídeos a este
+  actor, nunca a PhotoKit directamente. Las miniaturas piden `deliveryMode = .fastFormat` a
+  propósito, no solo por velocidad: es el único modo con el que PhotoKit garantiza una única llamada
+  al completion handler — con `.opportunistic` la segunda pasada "mejor calidad" podría necesitar
+  red (que tenemos desactivada) y no hay garantía documentada de que llegue una llamada final en ese
+  caso, así que se arriesgaría a colgar la `continuation` para siempre. Las dos descargas explícitas
+  usan `.highQualityFormat` por el mismo motivo exacto.
 - Si PhotoKit marca un asset como solo-en-iCloud, la miniatura se salta y se cuenta — no se
-  descarga. Solo el botón explícito de descarga del original la trae.
+  descarga. `AnalysisCoordinator.measureVideoSizes` hace lo mismo: un vídeo solo-en-iCloud se queda
+  sin tamaño real medido (`-1` en `VideoSizeRecord`), nunca se descarga para medirlo. Solo el botón
+  de descarga del original y el flujo de recodificar traen algo de iCloud.
 - CI (`.github/workflows/ci.yml`) tiene dos `grep` que **fallan el build**: uno si aparece
   `PHImageManager`/`requestImage` fuera de ese fichero, y otro si `isNetworkAccessAllowed = true`
-  aparece más de una vez o fuera de `PhotoLibrary.swift`. Si tocas algo de Photos y un guard salta,
-  el fix es mover el código a `PhotoLibrary.swift` o mantener la única excepción, no relajar el grep.
+  aparece más o menos de dos veces, o fuera de `PhotoLibrary.swift`. Si tocas algo de Photos y un
+  guard salta, el fix es mover el código a `PhotoLibrary.swift` o mantener las dos excepciones ya
+  contadas, no relajar el grep ni añadir una tercera sin actualizarlo a propósito.
 - El simulador no tiene iCloud: **ningún test automático puede demostrar el invariante.** La
   comprobación final es siempre en un iPhone real (el de Pablo, un iPhone 14), mirando el
   consumo de red en Ajustes.
@@ -141,10 +153,11 @@ barrido — solo de un toque explícito sobre una foto, una a la vez. Se garanti
   (compositor Core Animation, 8 bits) — un origen HDR 10 bits conserva la etiqueta de color
   correcta pero pierde profundidad de bit; ver el comentario `ponytail:` en `VideoRecoder.swift`
   para el techo exacto y cómo subirlo si hiciera falta. El audio se copia sin recodificar
-  (`outputSettings: nil`, passthrough). `PhotoLibrary.avAsset(for:)` sigue la misma regla de
-  iCloud que el resto del fichero (sin descarga automática): un vídeo que no está en el
-  dispositivo simplemente no aparece recodificable. El vídeo recodificado se añade como asset
-  nuevo (`PHAssetCreationRequest`) y el original se manda a la MISMA papelera
+  (`outputSettings: nil`, passthrough). `PhotoLibrary.avAsset(for:)` (sin red) se intenta primero;
+  si el vídeo no está descargado del todo, `recodeVideo` recurre a
+  `avAssetDownloadingIfNeeded(for:onProgress:)` — la segunda excepción deliberada al no-negociable
+  de iCloud, ver esa sección más arriba — en vez de fallar con un error. El vídeo recodificado se
+  añade como asset nuevo (`PHAssetCreationRequest`) y el original se manda a la MISMA papelera
   (`AnalysisCoordinator.markForDeletion`) que usa el resto de la app — no hay un borrado ni una
   confirmación aparte para esto.
 - **Navegación con pestañas (Fase 7): "Fotos" y "Vídeos" como modos de primer nivel**, un

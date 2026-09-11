@@ -11,14 +11,17 @@ import UIKit
 ///
 /// The rule that matters more than anything else in this app: nothing here
 /// downloads a full-resolution original from iCloud AUTOMATICALLY — not the
-/// analysis pass, not the grid, not prefetch. Network access for image
-/// requests stays off everywhere except inside `originalImage(for:onProgress:)`,
-/// the one method that exists specifically to do that download, and only
-/// ever runs from an explicit user tap on "Download original" for one photo
-/// at a time. CI greps for that one flag flipped on and fails the build if
-/// it appears anywhere but there, or more than once — see `ci.yml` for the
-/// exact pattern (not spelled out here, so this comment can't shadow-match
-/// its own guard).
+/// analysis pass, not the grid, not prefetch, not the video size measurement
+/// or the video list. Network access for image/video requests stays off
+/// everywhere except inside two confined, user-triggered methods, each
+/// reachable only from one explicit tap on one specific asset, never a
+/// batch or a background pass: `originalImage(for:onProgress:)` ("Download
+/// original" on one photo) and `avAssetDownloadingIfNeeded(for:onProgress:)`
+/// (falls back to a real download only when recoding a video that turns
+/// out not to be on-device yet — see `AnalysisCoordinator.recodeVideo`). CI
+/// greps for that flag flipped on and fails the build if it appears
+/// anywhere but those two spots — see `ci.yml` for the exact pattern (not
+/// spelled out here, so this comment can't shadow-match its own guard).
 actor PhotoLibrary {
     static let shared = PhotoLibrary()
 
@@ -204,6 +207,35 @@ actor PhotoLibrary {
             let options = PHVideoRequestOptions()
             options.isNetworkAccessAllowed = false
             options.deliveryMode = .highQualityFormat
+            imageManager.requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
+                continuation.resume(returning: avAsset)
+            }
+        }
+    }
+
+    /// The video equivalent of `originalImage(for:onProgress:)` — the
+    /// second (and last) deliberate exception to "never auto-download".
+    /// Only ever called from `AnalysisCoordinator.recodeVideo`, itself only
+    /// reachable by an explicit "Recodificar" tap on one specific video,
+    /// and only AFTER `avAsset(for:)` (no network) has already come back
+    /// nil — most videos are already on-device and never reach this path.
+    /// One video at a time, exactly like the photo original download.
+    ///
+    /// ponytail: no cancel wiring (unlike `originalImage`, which backs
+    /// `cancelOriginalDownload()`) — there's no "Cancelar" button on this
+    /// flow yet. Add one (and a matching `cancelImageRequest`) if a big
+    /// video download turns out to need bailing out of mid-way.
+    func avAssetDownloadingIfNeeded(
+        for asset: PHAsset,
+        onProgress: @escaping @Sendable (Double) -> Void
+    ) async -> AVAsset? {
+        await withCheckedContinuation { continuation in
+            let options = PHVideoRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .highQualityFormat
+            options.progressHandler = { progress, _, _, _ in
+                onProgress(progress)
+            }
             imageManager.requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
                 continuation.resume(returning: avAsset)
             }
