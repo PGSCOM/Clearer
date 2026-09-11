@@ -54,4 +54,15 @@ enum ReviewQueueBuilder {
             .map { ReviewItem(id: $0.key, reasons: $0.value) }
             .sorted { $0.id < $1.id }
     }
+
+    /// The still-undecided tail of `items` — everything not in `reviewed`
+    /// yet, in the same stable order `build` already produced. The review
+    /// screen always shows `pending.first`: since decisions are made
+    /// front-to-back, `reviewed` is always exactly the leading prefix of
+    /// `items` — except when toggling criteria drops IDs out of `items`
+    /// entirely, in which case `reviewed` may contain IDs `items` no longer
+    /// has, harmlessly ignored here.
+    static func pending(items: [ReviewItem], reviewed: Set<String>) -> [ReviewItem] {
+        items.filter { !reviewed.contains($0.id) }
+    }
 }

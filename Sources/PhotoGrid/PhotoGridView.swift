@@ -31,6 +31,7 @@ struct PhotoGridView: View {
                     } label: {
                         Image(systemName: "sparkles")
                     }
+                    .accessibilityIdentifier("openAnalysis")
                 }
             }
         }

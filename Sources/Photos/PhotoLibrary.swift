@@ -8,14 +8,25 @@ import UIKit
 /// (`.github/workflows/ci.yml`); the rest is enforced by convention, since
 /// those calls don't carry the iCloud-download risk the guard exists for.
 ///
-/// The one rule that matters more than anything else in this app:
-/// `isNetworkAccessAllowed` is ALWAYS false here. That's what guarantees we
-/// never pull a full-resolution original down from iCloud just to look at
-/// it — the entire reason this app exists.
+/// The rule that matters more than anything else in this app: nothing here
+/// downloads a full-resolution original from iCloud AUTOMATICALLY — not the
+/// analysis pass, not the grid, not prefetch. Network access for image
+/// requests stays off everywhere except inside `originalImage(for:onProgress:)`,
+/// the one method that exists specifically to do that download, and only
+/// ever runs from an explicit user tap on "Download original" for one photo
+/// at a time. CI greps for that one flag flipped on and fails the build if
+/// it appears anywhere but there, or more than once — see `ci.yml` for the
+/// exact pattern (not spelled out here, so this comment can't shadow-match
+/// its own guard).
 actor PhotoLibrary {
     static let shared = PhotoLibrary()
 
     private let imageManager = PHCachingImageManager()
+
+    /// ponytail: one original download in flight at a time — a decoded
+    /// original can be tens to ~190MB (ProRAW), so holding more than one
+    /// isn't worth the memory. The UI only ever offers one at a time anyway.
+    private var inFlightOriginalRequest: PHImageRequestID?
 
     private init() {}
 
@@ -51,6 +62,26 @@ actor PhotoLibrary {
     /// why). A metadata-only query — cheap, no image data involved.
     func asset(withID id: String) -> PHAsset? {
         PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject
+    }
+
+    /// Batch version of `asset(withID:)`'s metadata read, for callers that
+    /// need many assets at once (`estimatedFreedBytes` over the whole
+    /// trash) — one `fetchAssets` call instead of one per ID. Returns a
+    /// plain `Sendable` struct rather than `PHAsset` itself, which isn't
+    /// `Sendable` and shouldn't cross the actor boundary.
+    func sizeInputs(withIDs ids: [String]) -> [AssetSizeInput] {
+        let assets = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+        var results: [AssetSizeInput] = []
+        results.reserveCapacity(assets.count)
+        assets.enumerateObjects { asset, _, _ in
+            results.append(AssetSizeInput(
+                mediaType: asset.mediaType,
+                pixelWidth: asset.pixelWidth,
+                pixelHeight: asset.pixelHeight,
+                duration: asset.duration
+            ))
+        }
+        return results
     }
 
     // MARK: - Thumbnails
@@ -98,6 +129,59 @@ actor PhotoLibrary {
         }
     }
 
+    // MARK: - Original download (the one deliberate exception)
+
+    /// Downloads the full-resolution original from iCloud if needed. This is
+    /// the ONLY place in the app where `isNetworkAccessAllowed` is `true` —
+    /// see the type doc comment. Only ever called from an explicit user tap.
+    ///
+    /// `.highQualityFormat` (not `.opportunistic`) for the same reason
+    /// `thumbnail(for:targetSize:)` picks `.fastFormat`: it's the delivery
+    /// mode PhotoKit guarantees calls the result handler exactly once, so
+    /// the continuation can't be left hanging.
+    func originalImage(for asset: PHAsset, onProgress: @escaping @Sendable (Double) -> Void) async -> OriginalImageResult {
+        await withCheckedContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .highQualityFormat
+            options.resizeMode = .none
+            options.isSynchronous = false
+            options.progressHandler = { progress, _, _, _ in
+                onProgress(progress)
+            }
+
+            inFlightOriginalRequest = imageManager.requestImage(
+                for: asset,
+                targetSize: PHImageManagerMaximumSize,
+                contentMode: .default,
+                options: options
+            ) { [weak self] image, info in
+                Task { await self?.clearInFlightRequest() }
+                let wasCancelled = (info?[PHImageCancelledKey] as? Bool) == true
+                if wasCancelled {
+                    continuation.resume(returning: .cancelled)
+                } else if let image {
+                    continuation.resume(returning: .image(image))
+                } else {
+                    let error = info?[PHImageErrorKey] as? Error
+                    continuation.resume(returning: .failed(error?.localizedDescription ?? "unknown error"))
+                }
+            }
+        }
+    }
+
+    /// Cancels the one original download that may be in flight. PhotoKit
+    /// still calls the result handler with `PHImageCancelledKey` after this,
+    /// so `originalImage`'s continuation always resolves — nothing leaks.
+    func cancelOriginalDownload() {
+        guard let requestID = inFlightOriginalRequest else { return }
+        imageManager.cancelImageRequest(requestID)
+    }
+
+    private func clearInFlightRequest() {
+        inFlightOriginalRequest = nil
+    }
+
     // MARK: - Deleting
 
     /// Deletes assets by ID. iOS shows its own native confirmation alert
@@ -126,4 +210,20 @@ enum ThumbnailResult {
     case available(UIImage)
     case iCloudOnly
     case unavailable
+}
+
+enum OriginalImageResult {
+    case image(UIImage)
+    case cancelled
+    case failed(String)
+}
+
+/// The subset of `PHAsset` metadata `SpaceEstimator` needs — a `Sendable`
+/// DTO so it can cross the `PhotoLibrary` actor boundary, same reasoning as
+/// `AssetSignals` in `Detectors.swift`.
+struct AssetSizeInput: Sendable {
+    let mediaType: PHAssetMediaType
+    let pixelWidth: Int
+    let pixelHeight: Int
+    let duration: TimeInterval
 }

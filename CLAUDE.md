@@ -16,21 +16,28 @@ referencia intencional.
 
 ## El no-negociable del proyecto
 
-**Nunca se descarga una foto a resolución máxima desde iCloud.** Es el motivo de ser de la app;
-romperlo la invalida entera. Se garantiza así:
+**Nunca se descarga una foto a resolución máxima desde iCloud de forma automática.** Es el motivo
+de ser de la app; romperlo por accidente la invalida entera. Desde Fase 5 hay UNA excepción
+deliberada y confinada: el usuario puede pedir explícitamente el original de una foto concreta
+(botón "Descargar original" en la revisión) para juzgar mejor una foto en baja resolución. Nunca
+pasa como parte del análisis, del scroll de la rejilla, del prefetch de la revisión, ni de ningún
+barrido — solo de un toque explícito sobre una foto, una a la vez. Se garantiza así:
 
 - **`Sources/Photos/PhotoLibrary.swift` es el ÚNICO fichero que toca `PHImageManager`.**
-  `isNetworkAccessAllowed = false` se fija ahí y en ningún otro sitio. Todo lo demás pide
-  miniaturas a este actor, nunca a PhotoKit directamente. Las miniaturas piden
+  `isNetworkAccessAllowed` vale `false` en todo el fichero **salvo dentro de
+  `originalImage(for:onProgress:)`**, el único método que existe para esa descarga explícita. Todo
+  lo demás pide miniaturas a este actor, nunca a PhotoKit directamente. Las miniaturas piden
   `deliveryMode = .fastFormat` a propósito, no solo por velocidad: es el único modo con el que
   PhotoKit garantiza una única llamada al completion handler — con `.opportunistic` la segunda
   pasada "mejor calidad" podría necesitar red (que tenemos desactivada) y no hay garantía
   documentada de que llegue una llamada final en ese caso, así que se arriesgaría a colgar la
-  `continuation` para siempre.
-- Si PhotoKit marca un asset como solo-en-iCloud, se salta y se cuenta — no se descarga.
-- CI (`.github/workflows/ci.yml`) tiene un `grep` que **falla el build** si aparece
-  `PHImageManager`/`requestImage` fuera de ese fichero. Si tocas algo de Photos y el guard salta,
-  el fix es mover el código a `PhotoLibrary.swift`, no relajar el grep.
+  `continuation` para siempre. `originalImage` usa `.highQualityFormat` por el mismo motivo exacto.
+- Si PhotoKit marca un asset como solo-en-iCloud, la miniatura se salta y se cuenta — no se
+  descarga. Solo el botón explícito de descarga del original la trae.
+- CI (`.github/workflows/ci.yml`) tiene dos `grep` que **fallan el build**: uno si aparece
+  `PHImageManager`/`requestImage` fuera de ese fichero, y otro si `isNetworkAccessAllowed = true`
+  aparece más de una vez o fuera de `PhotoLibrary.swift`. Si tocas algo de Photos y un guard salta,
+  el fix es mover el código a `PhotoLibrary.swift` o mantener la única excepción, no relajar el grep.
 - El simulador no tiene iCloud: **ningún test automático puede demostrar el invariante.** La
   comprobación final es siempre en un iPhone real (el de Pablo, un iPhone 14), mirando el
   consumo de red en Ajustes.
@@ -79,13 +86,16 @@ romperlo la invalida entera. Se garantiza así:
   detectores de vídeo largo y Live Photo necesitan vídeos en el fetch. La rejilla de Fase 1 ya
   funciona igual para ambos: `PHImageManager` devuelve un fotograma de portada para vídeos sin
   cambios de código.
-- **La cobertura de CI de Fase 2 es solo lógica pura** (`Detectors`, `Grouping`, con tests reales).
-  La pantalla de análisis (settings + resultados) no se verifica en CI: hacerlo exigiría conceder
-  permiso de fotos sin interacción (`simctl privacy grant`) y sembrar imágenes fixture, lo que
-  además rompería el test de Fase 1 que depende de que el simulador arranque en `.notDetermined`.
-  Quedó fuera a propósito — es una pieza de ingeniería de CI aparte, no una tarea de esta fase. La
-  pipeline de Vision (`CalculateImageAestheticsScoresRequest` + `VNGenerateImageFeaturePrintRequest`)
-  solo se puede confirmar en el iPhone de Pablo, igual que el invariante de iCloud.
+- **La cobertura de CI de Fase 2 es solo lógica pura por defecto** (`Detectors`, `Grouping`, con
+  tests reales). La pantalla de análisis + revisión SÍ tiene un test end-to-end desde Fase 5
+  (`UITests/ReviewFlowUITests.swift`), pero es **opt-in**: solo corre si se lanza el workflow a
+  mano con `review_ui_test: true` (`workflow_dispatch`), nunca en un `push`/`pull_request` normal.
+  Necesita conceder permiso de fotos sin interacción (`simctl privacy grant`) y sembrar fixtures
+  (`Tests/Fixtures/`) en un simulador recién borrado — eso rompería el test de onboarding de Fase 1
+  si corriera en el MISMO simulador, así que el paso por defecto sigue saltándose
+  `ReviewFlowUITests` con `-skip-testing`. La pipeline de Vision
+  (`CalculateImageAestheticsScoresRequest` + `VNGenerateImageFeaturePrintRequest`) y la descarga real
+  desde iCloud solo se pueden confirmar en el iPhone de Pablo, igual que el invariante de iCloud.
 - **El borrado usa `PHPhotoLibrary.shared().performChanges` con `withTimeout` (`Sources/Support/Timeout.swift`).**
   Hay un bug confirmado (foro de Apple) donde el completion handler de `performChanges` a veces no
   llega en algunos builds de iOS 26 al borrar. El timeout (20s) evita que la UI se quede colgada
@@ -106,12 +116,29 @@ romperlo la invalida entera. Se garantiza así:
   no persistido en SwiftData — vive mientras el `AnalysisCoordinator` viva (la sesión de la
   pestaña Fotos). Es una capa de seguridad ANTES del borrado real; una vez confirmado, el borrado
   de PhotoKit tiene su propia confirmación nativa del sistema y su propia papelera de 30 días.
+- **(Fase 5) La revisión está pensada para ~10.000 fotos, no para una sesión corta.** Tres piezas
+  lo sostienen: `ReviewImageStore` mantiene una ventana fija de miniaturas cargadas (unas pocas por
+  delante + la última revisada, para deshacer) en vez de cargar toda la cola; `ReviewView` guarda
+  qué se ha revisado en `ReviewProgressRecord` (SwiftData, un solo `Set<String>` de IDs, no un
+  índice — un índice apuntaría a la foto equivocada en cuanto cambian los criterios) para poder
+  cerrar la app y seguir donde lo dejaste; y `AnalysisResultsView` calcula una sola vez
+  (`assetSnapshot`) las señales de cada `PHAsset` al terminar el análisis, así que activar/desactivar
+  criterios o mover el umbral de duplicados no vuelve a tocar PhotoKit por cada foto. Deshacer
+  (`history` en `ReviewView`) es una pila en memoria, no persistida — solo cubre la sesión actual.
+- **(Fase 5) Zoom real vía `UIScrollView` envuelto (`ZoomableImageView`), nunca gestos a mano.**
+  Vive tanto en la tarjeta de revisión (un pellizco por encima de ~1.15 abre el visor a pantalla
+  completa) como en `PhotoViewer` (zoom/pan/doble-toque libres). El centrado sigue el patrón clásico
+  de Apple (PhotoScroller): el `frame` de la `UIImageView` es el tamaño real en píxeles de la
+  imagen y es `zoomScale` quien la redimensiona en pantalla — no una aproximación con `contentInset`.
 
 ## Verificación
 
-`xcodegen generate` + `xcodebuild test` en CI, más el guard de PhotoKit — todo lo automatizable
-ya está en `ci.yml`. Lo que CI no puede cubrir (el invariante de iCloud en sí) se verifica a mano
-en el iPhone de Pablo antes de dar una fase por cerrada.
+`xcodegen generate` + `xcodebuild test` en CI, más los dos guards de PhotoKit (ningún
+`PHImageManager` fuera de `PhotoLibrary.swift`, y `isNetworkAccessAllowed = true` exactamente una
+vez) — todo lo automatizable por defecto ya está en `ci.yml`. El paso end-to-end de la revisión
+(`ReviewFlowUITests`) es opt-in, ver más arriba. Lo que CI no puede cubrir de ningún modo (la
+descarga real desde iCloud) se verifica a mano en el iPhone de Pablo antes de dar una fase por
+cerrada.
 
 Antes de cualquier entrega de UI: repaso completo de la ley anti-slop de
 `~/.claude/CLAUDE.md` — está prometido ahí, no es opcional.

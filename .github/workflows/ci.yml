@@ -2,13 +2,18 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      review_ui_test:
+        description: "Also run the review-flow UI test (seeds fixture photos into a freshly-erased simulator, grants Photos access non-interactively). Off by default — it's a separate, slower simulator pass on top of the normal suite."
+        type: boolean
+        default: false
   push:
   pull_request:
 
 jobs:
   build-test:
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 45 # +15 over the base suite's budget for the opt-in review-flow UI test pass
     env:
       DEVICE_NAME: iPhone 16
       BUNDLE_ID: com.pablogarcia.clearer
@@ -30,6 +35,22 @@ jobs:
             exit 1
           fi
           echo "OK: no PhotoKit image requests outside PhotoLibrary.swift"
+
+      # PhotoLibrary.originalImage(for:onProgress:) is the one deliberate,
+      # user-triggered exception to "never download from iCloud" (see its
+      # doc comment). This guard makes sure it STAYS the one exception:
+      # `isNetworkAccessAllowed = true` must appear exactly once in all of
+      # Sources, and only in that file.
+      - name: Guard — isNetworkAccessAllowed = true appears exactly once
+        run: |
+          COUNT=$(grep -rc "isNetworkAccessAllowed = true" --include="*.swift" Sources 2>/dev/null | awk -F: '{sum+=$2} END {print sum+0}')
+          OUTSIDE=$(grep -rl "isNetworkAccessAllowed = true" --include="*.swift" Sources 2>/dev/null | grep -v "Sources/Photos/PhotoLibrary.swift" || true)
+          if [ -n "$OUTSIDE" ] || [ "$COUNT" -ne 1 ]; then
+            echo "::error::isNetworkAccessAllowed = true must appear exactly once, only in PhotoLibrary.swift (found $COUNT occurrence(s))."
+            echo "$OUTSIDE"
+            exit 1
+          fi
+          echo "OK: isNetworkAccessAllowed = true appears exactly once, in PhotoLibrary.swift"
 
       - name: Cache Homebrew downloads
         uses: actions/cache@v6
@@ -78,13 +99,18 @@ jobs:
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           xcrun simctl boot "$UDID"
 
+      # ReviewFlowUITests is skipped here always — it needs Photos access
+      # granted and fixture media seeded ahead of launch (see the opt-in
+      # steps below), which would make every ordinary push wait on a second
+      # simulator erase/boot for a test almost nobody asked to run.
       - name: Run unit + UI tests
         run: |
           xcodebuild test \
             -project Clearer.xcodeproj \
             -scheme Clearer \
             -destination "id=${{ steps.sim.outputs.udid }}" \
-            -resultBundlePath build/TestResults.xcresult
+            -resultBundlePath build/TestResults.xcresult \
+            -skip-testing:ClearerUITests/ReviewFlowUITests
 
       # Screenshot of the running app — this is how Pablo sees the UI
       # without owning a Mac. Runs even if the test step above failed, so a
@@ -115,6 +141,75 @@ jobs:
           cp -r build/Clearer.xcarchive/Products/Applications/*.app build/Payload/
           (cd build && zip -qr Clearer-unsigned.ipa Payload)
 
+      # --- Opt-in: review-flow UI test (workflow_dispatch.review_ui_test) ---
+      # `inputs.review_ui_test` is only ever true on a manually-dispatched
+      # run with the box checked — on `push`/`pull_request` it's unset, and
+      # an unset value never equals `true`, so none of this runs on its own.
+      # Built and run separately from the main suite above, against a
+      # freshly-erased simulator: TCC needs to start clean before granting
+      # Photos access non-interactively, which the default onboarding smoke
+      # test deliberately avoids needing.
+      - name: Build ReviewFlowUITests for testing
+        if: inputs.review_ui_test == true
+        run: |
+          xcodebuild build-for-testing \
+            -project Clearer.xcodeproj \
+            -scheme Clearer \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath build/ReviewUITestData
+
+      - name: Erase simulator for a clean TCC state
+        if: inputs.review_ui_test == true
+        run: |
+          UDID="${{ steps.sim.outputs.udid }}"
+          xcrun simctl shutdown "$UDID" 2>/dev/null || true
+          xcrun simctl erase "$UDID"
+          xcrun simctl boot "$UDID"
+
+      - name: Install app, grant Photos access, seed fixture media
+        if: inputs.review_ui_test == true
+        run: |
+          UDID="${{ steps.sim.outputs.udid }}"
+          APP_PATH=$(find build/ReviewUITestData/Build/Products -maxdepth 2 -name "Clearer.app" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::Couldn't find the built Clearer.app under build/ReviewUITestData"
+            exit 1
+          fi
+          xcrun simctl install "$UDID" "$APP_PATH"
+          # "photos" (not "photos-add") grants full read/write access, so
+          # the app lands in .authorized rather than .limited — matching
+          # PhotoLibrary's .readWrite authorization request and keeping the
+          # test deterministic (no limited-library picker in the way).
+          xcrun simctl privacy "$UDID" grant photos "$BUNDLE_ID"
+          xcrun simctl addmedia "$UDID" \
+            Tests/Fixtures/long-video.mp4 \
+            Tests/Fixtures/photo-1.jpg \
+            Tests/Fixtures/photo-2.jpg \
+            Tests/Fixtures/photo-3.jpg
+
+      - name: Run ReviewFlowUITests
+        if: inputs.review_ui_test == true
+        run: |
+          xcodebuild test-without-building \
+            -project Clearer.xcodeproj \
+            -scheme Clearer \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath build/ReviewUITestData \
+            -only-testing:ClearerUITests/ReviewFlowUITests \
+            -resultBundlePath build/ReviewUITestResults.xcresult
+
+      # Best-effort: xcresulttool's attachment-export subcommand has shifted
+      # across Xcode versions, so a mismatch here shouldn't fail the whole
+      # job — the .xcresult itself is uploaded below regardless, and this
+      # step just saves having to open it in Xcode to see the screenshots.
+      - name: Export review UI test screenshots as PNGs
+        if: always() && inputs.review_ui_test == true
+        continue-on-error: true
+        run: |
+          xcrun xcresulttool export attachments \
+            --path build/ReviewUITestResults.xcresult \
+            --output-path build/ReviewUITestScreenshots
+
       - name: Upload CI artifacts
         if: always()
         uses: actions/upload-artifact@v7
@@ -124,5 +219,7 @@ jobs:
             build/screenshot.png
             build/TestResults.xcresult
             build/Clearer-unsigned.ipa
+            build/ReviewUITestResults.xcresult
+            build/ReviewUITestScreenshots
           if-no-files-found: warn
           retention-days: 14

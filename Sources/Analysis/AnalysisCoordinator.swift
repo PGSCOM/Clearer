@@ -113,18 +113,13 @@ final class AnalysisCoordinator {
 
     /// Rough "space freed" figure for the pending trash — see
     /// `SpaceEstimator` for why this is an estimate, not an exact figure.
+    /// One batch `PhotoLibrary` fetch, not one PhotoKit round-trip per
+    /// pending ID: with thousands marked for deletion, `TrashView`'s
+    /// `.task(id: pendingDeletionIDs)` re-runs this on every change, and a
+    /// per-ID fetch there would visibly stall as the trash grows.
     func estimatedFreedBytes() async -> Int64 {
-        var total: Int64 = 0
-        for id in pendingDeletionIDs {
-            guard let asset = await PhotoLibrary.shared.asset(withID: id) else { continue }
-            total += SpaceEstimator.estimatedBytes(
-                mediaType: asset.mediaType,
-                pixelWidth: asset.pixelWidth,
-                pixelHeight: asset.pixelHeight,
-                duration: asset.duration
-            )
-        }
-        return total
+        let inputs = await PhotoLibrary.shared.sizeInputs(withIDs: Array(pendingDeletionIDs))
+        return SpaceEstimator.totalEstimatedBytes(for: inputs)
     }
 
     /// Called after a successful delete: drops the given IDs from every

@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "es",
   "strings" : {
+    "%lld de %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld of %lld"
+          }
+        }
+      }
+    },
+    "%lld fotos" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld photos"
+          }
+        }
+      }
+    },
     "Abrir Ajustes" : {
       "localizations" : {
         "en" : {
@@ -51,12 +71,12 @@
         }
       }
     },
-    "Capturas de pantalla" : {
+    "Cancelar" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Screenshots"
+            "value" : "Cancel"
           }
         }
       }
@@ -71,12 +91,32 @@
         }
       }
     },
+    "Capturas de pantalla" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Screenshots"
+          }
+        }
+      }
+    },
     "Casi duplicadas" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Near-duplicates"
+          }
+        }
+      }
+    },
+    "Cerrar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close"
           }
         }
       }
@@ -107,6 +147,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Allow access to my photos"
+          }
+        }
+      }
+    },
+    "Descargar original" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download original"
+          }
+        }
+      }
+    },
+    "Deshacer" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Undo"
+          }
+        }
+      }
+    },
+    "Documento" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Document"
           }
         }
       }
@@ -151,16 +221,6 @@
         }
       }
     },
-    "Está tardando más de lo normal. Puede que ya se haya completado: revisa tu fototeca. Si no, inténtalo de nuevo." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This is taking longer than usual. It may have already finished: check your library. If not, try again."
-          }
-        }
-      }
-    },
     "Estimado a partir del tamaño de la imagen y la duración del vídeo: no hay forma de leer el peso exacto sin descargar el archivo." : {
       "localizations" : {
         "en" : {
@@ -171,12 +231,12 @@
         }
       }
     },
-    "Fotos de baja calidad" : {
+    "Está tardando más de lo normal. Puede que ya se haya completado: revisa tu fototeca. Si no, inténtalo de nuevo." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Low-quality photos"
+            "value" : "This is taking longer than usual. It may have already finished: check your library. If not, try again."
           }
         }
       }
@@ -187,6 +247,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Photos"
+          }
+        }
+      }
+    },
+    "Fotos de baja calidad" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Low-quality photos"
           }
         }
       }
@@ -271,12 +341,22 @@
         }
       }
     },
-    "Papelera (%lld)" : {
+    "No se pudo cargar la foto" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trash (%lld)"
+            "value" : "Couldn't load the photo"
+          }
+        }
+      }
+    },
+    "Original descargado" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Original downloaded"
           }
         }
       }
@@ -291,22 +371,22 @@
         }
       }
     },
+    "Papelera (%lld)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trash (%lld)"
+          }
+        }
+      }
+    },
     "Parecida a otra" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Similar to another"
-          }
-        }
-      }
-    },
-    "Qué buscar" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "What to look for"
           }
         }
       }
@@ -321,32 +401,12 @@
         }
       }
     },
-    "Ráfaga" : {
+    "Qué buscar" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Burst"
-          }
-        }
-      }
-    },
-    "Ráfagas (quedarse la mejor)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bursts (keep the best)"
-          }
-        }
-      }
-    },
-    "Ráfagas de sobra" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Extra bursts"
+            "value" : "What to look for"
           }
         }
       }
@@ -357,6 +417,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Receipts & documents"
+          }
+        }
+      }
+    },
+    "Reintentar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry"
           }
         }
       }
@@ -387,6 +457,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Review %lld photos"
+          }
+        }
+      }
+    },
+    "Ráfaga" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Burst"
+          }
+        }
+      }
+    },
+    "Ráfagas (quedarse la mejor)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bursts (keep the best)"
+          }
+        }
+      }
+    },
+    "Ráfagas de sobra" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extra bursts"
           }
         }
       }
@@ -441,42 +541,12 @@
         }
       }
     },
-    "%lld de %lld" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld of %lld"
-          }
-        }
-      }
-    },
-    "%lld fotos" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld photos"
-          }
-        }
-      }
-    },
     "· %lld sin descargar de iCloud" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "· %lld not downloaded from iCloud"
-          }
-        }
-      }
-    },
-    "Documento" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Document"
           }
         }
       }

@@ -15,6 +15,13 @@ struct AnalysisResultsView: View {
     @State private var duplicateGroupCount = 0
     @State private var hasAnalyzed = false
 
+    // Every asset's signals, read off `PHAsset` exactly once when analysis
+    // finishes — not on every criteria toggle or slider drag. At ~10,000
+    // photos, touching every `PHAsset` on each toggle is the difference
+    // between an instant switch and a visible stall; recomputing over this
+    // plain-struct snapshot instead is effectively free.
+    @State private var assetSnapshot: [(id: String, signals: AssetSignals)] = []
+
     // Raw data behind `counts`, kept around so the review queue can be
     // rebuilt without a second full pass over `fetchResult`.
     @State private var flaggedSingles: [(id: String, reasons: Set<CleanupReason>)] = []
@@ -107,25 +114,26 @@ struct AnalysisResultsView: View {
     private func runAnalysis() {
         Task {
             await coordinator.analyze(fetchResult)
+            buildAssetSnapshot()
             hasAnalyzed = true
             recomputeCounts()
             recomputeDuplicateGroups()
         }
     }
 
-    /// Cheap: just property reads off already-fetched `PHAsset`s plus
-    /// dictionary lookups into the coordinator's cache. No PhotoKit or
-    /// Vision I/O here, so running this synchronously on every criteria
-    /// toggle is fine even for large libraries.
-    private func recomputeCounts() {
-        var tally: [CleanupReason: Int] = [:]
-        var burstsByID: [String: [(id: String, overallScore: Float?)]] = [:]
-        var singles: [(id: String, reasons: Set<CleanupReason>)] = []
-
+    /// The one pass over live `PHAsset`s — reads exactly what `Detectors`
+    /// needs plus the cached Vision result, in `fetchResult`'s creation-date
+    /// order (which `recomputeDuplicateGroups` below relies on). Everything
+    /// downstream of this (both toggles and the duplicate-threshold slider)
+    /// works off the snapshot it produces, never touching `PHAsset` again
+    /// until the next "Volver a analizar".
+    private func buildAssetSnapshot() {
+        var snapshot: [(id: String, signals: AssetSignals)] = []
+        snapshot.reserveCapacity(fetchResult.count)
         for index in 0..<fetchResult.count {
             let asset = fetchResult.object(at: index)
             let cached = coordinator.scores[asset.localIdentifier]
-            let signals = AssetSignals(
+            snapshot.append((asset.localIdentifier, AssetSignals(
                 mediaType: asset.mediaType,
                 isScreenshot: asset.mediaSubtypes.contains(.photoScreenshot),
                 isLivePhoto: asset.mediaSubtypes.contains(.photoLive),
@@ -133,16 +141,29 @@ struct AnalysisResultsView: View {
                 duration: asset.duration,
                 overallScore: cached?.overallScore,
                 isUtility: cached?.isUtility
-            )
+            )))
+        }
+        assetSnapshot = snapshot
+    }
+
+    /// Pure array/dictionary work over `assetSnapshot` — no PhotoKit or
+    /// Vision I/O, no live `PHAsset` reads — so running this synchronously
+    /// on every criteria toggle stays instant even at ~10,000 photos.
+    private func recomputeCounts() {
+        var tally: [CleanupReason: Int] = [:]
+        var burstsByID: [String: [(id: String, overallScore: Float?)]] = [:]
+        var singles: [(id: String, reasons: Set<CleanupReason>)] = []
+
+        for (id, signals) in assetSnapshot {
             let reasons = Detectors.reasons(for: signals, criteria: criteria)
             for reason in reasons {
                 tally[reason, default: 0] += 1
             }
             if !reasons.isEmpty {
-                singles.append((asset.localIdentifier, reasons))
+                singles.append((id, reasons))
             }
-            if let burstID = asset.burstIdentifier {
-                burstsByID[burstID, default: []].append((asset.localIdentifier, cached?.overallScore))
+            if let burstID = signals.burstIdentifier {
+                burstsByID[burstID, default: []].append((id, signals.overallScore))
             }
         }
 
@@ -163,13 +184,11 @@ struct AnalysisResultsView: View {
     }
 
     /// Only re-runs `Grouping`, not Vision — feature prints are already in
-    /// memory, so dragging the slider is cheap and live.
+    /// memory and `assetSnapshot` is already in creation-date order, so
+    /// dragging the slider is cheap and live with no `PHAsset` touches.
     private func recomputeDuplicateGroups() {
-        // Must stay in creation-date order (how `fetchResult` is already
-        // sorted) — `Grouping` assumes near-duplicates are adjacent.
-        let orderedIDs = (0..<fetchResult.count).compactMap { index -> String? in
-            let id = fetchResult.object(at: index).localIdentifier
-            return coordinator.featurePrints[id] != nil ? id : nil
+        let orderedIDs = assetSnapshot.compactMap { id, _ in
+            coordinator.featurePrints[id] != nil ? id : nil
         }
         let groups = Grouping.groups(
             ids: orderedIDs,
