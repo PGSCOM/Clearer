@@ -36,7 +36,12 @@ final class ReviewImageStore {
     /// PhotoKit involved — so the edge cases (empty pending, empty history,
     /// fewer items than the window) are covered without a live photo
     /// library.
-    static func keepWarmIDs(pending: [String], recentlyReviewed: [String], ahead: Int = 4, behind: Int = 1) -> Set<String> {
+    ///
+    /// `nonisolated` on purpose: it touches no instance state, and without
+    /// it the class's `@MainActor` isolation applies to static members too
+    /// — which the plain (non-MainActor) test methods in
+    /// `ReviewImageStoreTests` can't call synchronously.
+    nonisolated static func keepWarmIDs(pending: [String], recentlyReviewed: [String], ahead: Int = 4, behind: Int = 1) -> Set<String> {
         Set(pending.prefix(ahead)).union(recentlyReviewed.suffix(behind))
     }
 
