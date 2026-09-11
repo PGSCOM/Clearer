@@ -58,6 +58,16 @@ actor PhotoLibrary {
         return PHAsset.fetchAssets(with: options)
     }
 
+    /// Videos only, filtered at the PhotoKit level via the native
+    /// `mediaType` fetch overload — for `VideoModeView`, which stands on
+    /// its own without needing the "Analizar fototeca" pass (videos skip
+    /// Vision entirely, see `AnalysisCoordinator.analyze`).
+    func fetchAllVideos() -> PHFetchResult<PHAsset> {
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        return PHAsset.fetchAssets(with: .video, options: options)
+    }
+
     /// Looks up a single asset by the ID other layers hold instead of a
     /// live `PHAsset` (see `AssetSignals`'/`ReviewItem`'s doc comments for
     /// why). A metadata-only query — cheap, no image data involved.
@@ -198,6 +208,24 @@ actor PhotoLibrary {
                 continuation.resume(returning: avAsset)
             }
         }
+    }
+
+    /// The video's real on-disk byte size — the public, documented
+    /// equivalent of the undocumented `fileSize` KVC key this app
+    /// deliberately avoids (see `SpaceEstimator`'s doc comment): once we
+    /// have the `AVAsset`, its backing file's `URLResourceValues` carries
+    /// an exact size, no network, no private API. `nil` if the video is
+    /// iCloud-only (same rule as `avAsset(for:)`) or if PhotoKit hands back
+    /// a composition instead of a single file — an edited or slow-motion
+    /// video, which has no one "file size" to read this way.
+    func videoFileSize(for asset: PHAsset) async -> Int64? {
+        guard let avAsset = await avAsset(for: asset), let urlAsset = avAsset as? AVURLAsset else {
+            return nil
+        }
+        guard let values = try? urlAsset.url.resourceValues(forKeys: [.fileSizeKey]), let size = values.fileSize else {
+            return nil
+        }
+        return Int64(size)
     }
 
     // MARK: - Saving a recoded video

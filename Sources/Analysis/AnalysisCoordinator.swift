@@ -36,17 +36,40 @@ final class AnalysisCoordinator {
     /// is the chance to change your mind BEFORE anything actually happens.
     private(set) var pendingDeletionIDs: Set<String> = []
 
+    /// Which flagged assets the user has already decided on — the single
+    /// source of truth behind `ReviewView`'s one-at-a-time queue AND
+    /// `PhotoGalleryView`'s tap-to-mark grid, so a photo decided in one
+    /// doesn't linger as "still pending" in the other. Backed by
+    /// `ReviewProgressStore`; see `markReviewed`/`unmarkReviewed`.
+    private(set) var reviewedIDs: Set<String> = []
+
+    /// assetID -> real on-disk byte size, backed by SwiftData. `-1` means
+    /// "measured, no real size available" (see `VideoSizeRecord`).
+    private(set) var videoSizes: [String: Int64] = [:]
+    private(set) var isMeasuringVideoSizes = false
+    private(set) var measuredVideoCount = 0
+    private(set) var totalVideoCount = 0
+
     private let modelContext: ModelContext
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
         preloadCachedScores()
+        preloadCachedVideoSizes()
+        reviewedIDs = ReviewProgressStore.load(from: modelContext)
     }
 
     private func preloadCachedScores() {
         let cached = (try? modelContext.fetch(FetchDescriptor<AssetAnalysis>())) ?? []
         for entry in cached {
             scores[entry.assetID] = (entry.overallScore, entry.isUtility)
+        }
+    }
+
+    private func preloadCachedVideoSizes() {
+        let cached = (try? modelContext.fetch(FetchDescriptor<VideoSizeRecord>())) ?? []
+        for entry in cached {
+            videoSizes[entry.assetID] = entry.byteSize
         }
     }
 
@@ -102,7 +125,44 @@ final class AnalysisCoordinator {
         return distance
     }
 
-    // MARK: - 4K video recoding
+    // MARK: - Video size measurement
+
+    /// Real byte size for every video in `fetchResult` not already in
+    /// `videoSizes` — `VideoModeView`'s "sort by occupancy" only means
+    /// anything once this has run. Same shape as `analyze()`: skip what's
+    /// cached, measure, save periodically so a killed app doesn't lose a
+    /// whole pass. `PhotoLibrary.videoFileSize(for:)` already refuses
+    /// iCloud-only videos (returns `nil`, stored here as `-1`) — nothing
+    /// here downloads anything.
+    func measureVideoSizes(_ fetchResult: PHFetchResult<PHAsset>) async {
+        guard !isMeasuringVideoSizes else { return }
+        isMeasuringVideoSizes = true
+        defer { isMeasuringVideoSizes = false }
+
+        totalVideoCount = fetchResult.count
+        measuredVideoCount = 0
+
+        for index in 0..<fetchResult.count {
+            if Task.isCancelled { break }
+            let asset = fetchResult.object(at: index)
+            defer { measuredVideoCount += 1 }
+
+            guard videoSizes[asset.localIdentifier] == nil else { continue }
+
+            let assetID = asset.localIdentifier
+            let size = await PhotoLibrary.shared.videoFileSize(for: asset) ?? -1
+            videoSizes[assetID] = size
+            modelContext.insert(VideoSizeRecord(assetID: assetID, byteSize: size))
+
+            if measuredVideoCount % 25 == 0 {
+                try? modelContext.save()
+            }
+        }
+
+        try? modelContext.save()
+    }
+
+    // MARK: - Video recoding
 
     /// Recodes one video to a smaller resolution (bitrate and color space
     /// preserved — see `VideoRecoder`), saves the result as a new asset, and
@@ -128,6 +188,10 @@ final class AnalysisCoordinator {
         try await VideoRecoder.recode(avAsset, to: target, outputURL: outputURL, onProgress: onProgress)
         let newID = try await PhotoLibrary.shared.addVideoAsset(fileURL: outputURL)
         markForDeletion(id)
+        // In case this video also matched "vídeos largos": it shouldn't
+        // still show up as pending in ReviewView once it's already staged
+        // for deletion here.
+        markReviewed(id)
         return newID
     }
 
@@ -139,6 +203,27 @@ final class AnalysisCoordinator {
 
     func unmarkForDeletion(_ id: String) {
         pendingDeletionIDs.remove(id)
+    }
+
+    // MARK: - Review progress
+
+    /// Called on every "Mantener"/"Eliminar" decision, whether it comes
+    /// from `ReviewView`'s one-at-a-time queue or a tap in
+    /// `PhotoGalleryView`'s grid — both read `reviewedIDs` from here, so
+    /// neither can strand a photo the other already decided on. Saves
+    /// immediately rather than batching: this fires on individual taps, not
+    /// in a tight loop like `analyze()`. ponytail: `ReviewProgressStore.save`
+    /// rewrites the whole set as an array — O(reviewedIDs.count) per tap.
+    /// Fine at review-session scale; if it's ever felt at ~10k decisions,
+    /// batch or debounce the save instead of writing on every call.
+    func markReviewed(_ id: String) {
+        guard reviewedIDs.insert(id).inserted else { return }
+        ReviewProgressStore.save(reviewedIDs, to: modelContext)
+    }
+
+    func unmarkReviewed(_ id: String) {
+        guard reviewedIDs.remove(id) != nil else { return }
+        ReviewProgressStore.save(reviewedIDs, to: modelContext)
     }
 
     /// Rough "space freed" figure for the pending trash — see
@@ -161,13 +246,19 @@ final class AnalysisCoordinator {
             pendingDeletionIDs.remove(id)
             scores.removeValue(forKey: id)
             featurePrints.removeValue(forKey: id)
+            videoSizes.removeValue(forKey: id)
         }
         if let cached = try? modelContext.fetch(FetchDescriptor<AssetAnalysis>()) {
             for record in cached where idSet.contains(record.assetID) {
                 modelContext.delete(record)
             }
-            try? modelContext.save()
         }
+        if let cachedSizes = try? modelContext.fetch(FetchDescriptor<VideoSizeRecord>()) {
+            for record in cachedSizes where idSet.contains(record.assetID) {
+                modelContext.delete(record)
+            }
+        }
+        try? modelContext.save()
     }
 }
 

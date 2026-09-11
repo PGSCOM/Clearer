@@ -25,15 +25,23 @@ enum VideoRecoder {
     }
 
     /// Long-edge target in pixels. Recoding only ever downscales — a video
-    /// already at or under the target throws `alreadySmallEnough`.
+    /// already at or under the target throws `alreadySmallEnough`. Declared
+    /// largest-first so `allCases` feeds a menu that's already in the right
+    /// order.
     enum Target: CaseIterable, Identifiable {
+        case p2160
+        case p1440
         case p1080
         case p720
+        case p540
 
         var longEdge: CGFloat {
             switch self {
+            case .p2160: 3840
+            case .p1440: 2560
             case .p1080: 1920
             case .p720: 1280
+            case .p540: 960
             }
         }
 
@@ -41,8 +49,11 @@ enum VideoRecoder {
 
         var label: String {
             switch self {
+            case .p2160: "2160p"
+            case .p1440: "1440p"
             case .p1080: "1080p"
             case .p720: "720p"
+            case .p540: "540p"
             }
         }
     }

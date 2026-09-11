@@ -1,4 +1,3 @@
-import SwiftData
 import SwiftUI
 import UIKit
 
@@ -21,12 +20,10 @@ struct ReviewView: View {
     let reviewItems: [ReviewItem]
     let coordinator: AnalysisCoordinator
 
-    @Environment(\.modelContext) private var modelContext
     @State private var store = ReviewImageStore()
 
     @State private var pendingQueue: [ReviewItem] = []
     @State private var cursor = 0
-    @State private var reviewedIDs: Set<String> = []
     @State private var history: [Decision] = []
     @State private var showViewer = false
 
@@ -97,14 +94,10 @@ struct ReviewView: View {
             }
         }
         .task {
-            reviewedIDs = ReviewProgressStore.load(from: modelContext)
-            pendingQueue = ReviewQueueBuilder.pending(items: reviewItems, reviewed: reviewedIDs)
+            pendingQueue = ReviewQueueBuilder.pending(items: reviewItems, reviewed: coordinator.reviewedIDs)
             cursor = 0
             store.resetFullRes(for: currentItem?.id)
             updatePrefetch()
-        }
-        .onDisappear {
-            ReviewProgressStore.save(reviewedIDs, to: modelContext)
         }
     }
 
@@ -130,14 +123,11 @@ struct ReviewView: View {
         if shouldDelete {
             coordinator.markForDeletion(item.id)
         }
-        reviewedIDs.insert(item.id)
+        coordinator.markReviewed(item.id)
         history.append(Decision(itemID: item.id, wasDeleted: shouldDelete))
         cursor += 1
         store.resetFullRes(for: currentItem?.id)
         updatePrefetch()
-        if history.count % 25 == 0 {
-            ReviewProgressStore.save(reviewedIDs, to: modelContext)
-        }
     }
 
     private func undo() {
@@ -145,7 +135,7 @@ struct ReviewView: View {
         if last.wasDeleted {
             coordinator.unmarkForDeletion(last.itemID)
         }
-        reviewedIDs.remove(last.itemID)
+        coordinator.unmarkReviewed(last.itemID)
         cursor -= 1
         store.resetFullRes(for: currentItem?.id)
         updatePrefetch()

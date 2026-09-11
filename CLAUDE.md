@@ -147,6 +147,36 @@ barrido — solo de un toque explícito sobre una foto, una a la vez. Se garanti
   nuevo (`PHAssetCreationRequest`) y el original se manda a la MISMA papelera
   (`AnalysisCoordinator.markForDeletion`) que usa el resto de la app — no hay un borrado ni una
   confirmación aparte para esto.
+- **Navegación con pestañas (Fase 7): "Fotos" y "Vídeos" como modos de primer nivel**, un
+  `TabView` en `ContentView` en vez del `NavigationStack` único de antes. El `AnalysisCoordinator`
+  se crea en `ContentView` (no dentro de `PhotoGridView`, como hasta Fase 6) para que ambas
+  pestañas compartan una única papelera. "Vídeos" (`VideoModeView`) no depende de "Analizar
+  fototeca": los vídeos nunca pasan por Vision, así que se lista directamente desde
+  `PhotoLibrary.fetchAllVideos()`.
+- **Ocupación real de vídeo, no solo estimada (Fase 7)**: `PhotoLibrary.videoFileSize(for:)` lee
+  `AVURLAsset.url.resourceValues(forKeys: [.fileSizeKey])` — la vía pública y documentada
+  equivalente al KVC `fileSize` no documentado que este mismo fichero descarta más arriba. Sin
+  descarga: reutiliza `avAsset(for:)`, que ya tiene `isNetworkAccessAllowed = false`. Se mide en
+  segundo plano (`AnalysisCoordinator.measureVideoSizes`, con barra de progreso) y se cachea en
+  SwiftData (`VideoSizeRecord`, con `-1` como centinela "medido, sin tamaño real" para vídeos
+  editados/cámara lenta que PhotoKit devuelve como `AVComposition` sin un fichero único). El
+  estimador de `SpaceEstimator` para vídeo dejó de ser `duración × 10 Mbps fijo` (ignoraba la
+  resolución: un 4K de 20s salía más pequeño que un 720p de 3 min) y pasó a escalar por píxeles con
+  un exponente 0.65, calibrado contra las cifras públicas de Apple (Ajustes → Cámara) — sirve de
+  resultado instantáneo mientras `measureVideoSizes` no ha terminado, y de resultado final para los
+  vídeos sin tamaño real disponible.
+- **`reviewedIDs` vive en `AnalysisCoordinator`, no en `ReviewView` (Fase 7)**: antes era `@State`
+  privado de `ReviewView`, cargado/guardado solo ahí. Con la galería nueva (`PhotoGalleryView`)
+  decidiendo fotos por fuera de `ReviewView`, hacía falta una única fuente de verdad para que
+  ninguna de las dos vistas pisara el progreso de la otra — de paso se borra más código del que se
+  añade (fuera `@Environment(\.modelContext)` y el `.onDisappear` de `ReviewView`).
+- **La galería de fotos filtradas (Fase 7) no es una pestaña**: es un enlace dentro de "Análisis",
+  junto a "Revisar N fotos" — reutiliza sin duplicar los criterios/filtro de fecha ya elegidos ahí.
+  `PhotoGalleryView` marca/desmarca para la papelera con un TOQUE directo en la rejilla (no hay que
+  entrar en el visor a pantalla completa para decidir), con un pellizco que ajusta el número de
+  columnas. Es deliberadamente distinto de la vista de comparación lado a lado que Fase 3 descartó
+  para grupos de duplicados (ver más arriba): aquí no hay selección múltiple ni checkboxes, cada
+  celda decide sobre sí misma con el mismo `markForDeletion`/`markReviewed` que usa `ReviewView`.
 
 ## Verificación
 

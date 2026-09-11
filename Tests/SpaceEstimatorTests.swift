@@ -15,12 +15,22 @@ final class SpaceEstimatorTests: XCTestCase {
         XCTAssertGreaterThan(long, short)
     }
 
-    func testVideoEstimateIgnoresPixelDimensions() {
-        // Deliberate: duration is a far more reliable video-size signal
-        // than resolution (bitrate varies a lot more than pixel count).
-        let small = SpaceEstimator.estimatedBytes(mediaType: .video, pixelWidth: 100, pixelHeight: 100, duration: 60)
-        let large = SpaceEstimator.estimatedBytes(mediaType: .video, pixelWidth: 4000, pixelHeight: 3000, duration: 60)
-        XCTAssertEqual(small, large)
+    func testHigherResolutionVideosEstimateMoreBytes() {
+        // A 4K video isn't the same size as a 720p one of the same
+        // duration — resolution has to move the estimate, or sorting
+        // videos "by occupancy" in VideoModeView would really just be
+        // sorting by duration.
+        let small = SpaceEstimator.estimatedBytes(mediaType: .video, pixelWidth: 1280, pixelHeight: 720, duration: 60)
+        let large = SpaceEstimator.estimatedBytes(mediaType: .video, pixelWidth: 3840, pixelHeight: 2160, duration: 60)
+        XCTAssertGreaterThan(large, small)
+    }
+
+    func testVideoWithUnknownDimensionsFallsBackToA1080pRate() {
+        // Some third-party/shared-album videos report 0×0. Falling through
+        // pow(0, …) = 0 would silently estimate 0 bytes and drop them to
+        // the bottom of every size-sorted list.
+        let unknownDimensions = SpaceEstimator.estimatedBytes(mediaType: .video, pixelWidth: 0, pixelHeight: 0, duration: 60)
+        XCTAssertGreaterThan(unknownDimensions, 0)
     }
 
     func testZeroInputsEstimateZeroBytes() {

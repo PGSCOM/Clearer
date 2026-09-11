@@ -22,8 +22,6 @@ struct AnalysisResultsView: View {
     @State private var startDate = Date()
     @State private var endDate = Date()
 
-    @State private var fourKVideoIDs: [String] = []
-
     // Every asset's signals, read off `PHAsset` exactly once when analysis
     // finishes — not on every criteria toggle or slider drag. At ~10,000
     // photos, touching every `PHAsset` on each toggle is the difference
@@ -95,22 +93,23 @@ struct AnalysisResultsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if !fourKVideoIDs.isEmpty {
-                    Section("Vídeos 4K") {
-                        NavigationLink {
-                            VideoRecodeView(ids: fourKVideoIDs, coordinator: coordinator)
-                        } label: {
-                            Text("Recodificar \(fourKVideoIDs.count) vídeos a menor resolución")
-                        }
-                    }
-                }
-
                 if !reviewItems.isEmpty {
                     Section {
                         NavigationLink {
                             ReviewView(reviewItems: reviewItems, coordinator: coordinator)
                         } label: {
                             Text("Revisar \(reviewItems.count) fotos")
+                        }
+                        NavigationLink {
+                            let estimatedSizes = Dictionary(uniqueKeysWithValues: assetSnapshot.map { id, signals in
+                                (id, SpaceEstimator.estimatedBytes(
+                                    mediaType: signals.mediaType, pixelWidth: signals.pixelWidth,
+                                    pixelHeight: signals.pixelHeight, duration: signals.duration
+                                ))
+                            })
+                            PhotoGalleryView(reviewItems: reviewItems, estimatedSizes: estimatedSizes, coordinator: coordinator)
+                        } label: {
+                            Text("Ver galería (\(reviewItems.count))")
                         }
                     }
                 } else if !coordinator.pendingDeletionIDs.isEmpty {
@@ -209,7 +208,6 @@ struct AnalysisResultsView: View {
         var tally: [CleanupReason: Int] = [:]
         var burstsByID: [String: [(id: String, overallScore: Float?)]] = [:]
         var singles: [(id: String, reasons: Set<CleanupReason>)] = []
-        var fourK: [String] = []
 
         for (id, signals) in assetsInRange() {
             let reasons = Detectors.reasons(for: signals, criteria: criteria)
@@ -222,11 +220,7 @@ struct AnalysisResultsView: View {
             if let burstID = signals.burstIdentifier {
                 burstsByID[burstID, default: []].append((id, signals.overallScore))
             }
-            if signals.mediaType == .video, Detectors.isFourK(pixelWidth: signals.pixelWidth, pixelHeight: signals.pixelHeight) {
-                fourK.append(id)
-            }
         }
-        fourKVideoIDs = fourK
 
         var burstGroupsList: [[(id: String, overallScore: Float?)]] = []
         if criteria.flagBurstDuplicates {
